@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
+import websocketService from '@/services/websocket.js'
 
 const router = useRouter()
 const API_BASE = 'http://127.0.0.1:5001/api'
@@ -25,12 +26,37 @@ const activeArea = ref('A')
 
 const filteredSpots = computed(() => spots.value.filter(spot => spot.area === activeArea.value))
 
-// === 1. API请求 ===
+// WebSocket 订阅管理
+let unsubscribeSpots = null
+let unsubscribeOrders = null
+
+// === WebSocket 事件处理 ===
+const setupWebSocket = () => {
+  websocketService.connect()
+  
+  // 订阅车位更新
+  unsubscribeSpots = websocketService.subscribe('spots_update', (data) => {
+    spots.value = data
+  })
+  
+  // 订阅订单更新
+  unsubscribeOrders = websocketService.subscribe('orders_update', (data) => {
+    // 只更新当前用户的订单
+    if (user.value) {
+      orderList.value = data.filter(order => order.username === user.value.real_name)
+    }
+  })
+}
+
+// === API请求 (保留作为备用) ===
 const fetchSpots = async () => {
     try {
         const res = await axios.get(`${API_BASE}/parking/spots`)
         spots.value = res.data.data
-    } catch (err) { console.error(err) }
+    } catch (err) { 
+        console.error(err)
+        ElMessage.error('获取车位信息失败')
+    }
 }
 
 const fetchOrders = async () => {
@@ -107,7 +133,9 @@ const confirmAction = async () => {
             paymentMethod.value = 'balance'
             form.value.fee = res.data.data.fee
             form.value.duration = res.data.data.duration
-            loading.value = false; fetchSpots(); fetchOrders(); return 
+            loading.value = false
+            // 数据会通过WebSocket自动更新，不需要手动刷新
+            return 
         }
         else if (currentAction.value === 'pay') {
             await axios.post(`${API_BASE}/parking/pay`, { order_no: activeSpot.value.current_order, payment_method: paymentMethod.value })
@@ -115,7 +143,7 @@ const confirmAction = async () => {
             ElMessage.success('支付成功')
         }
         dialogVisible.value = false
-        fetchSpots(); fetchOrders()
+        // 数据会通过WebSocket自动更新，不需要手动刷新
     } catch (err) {
         if (err.response && (err.response.status === 403 || err.response.status === 402)) {
             ElMessage.error(err.response.data.msg)
@@ -129,7 +157,7 @@ const handleCancel = async (order) => {
         await ElMessageBox.confirm('确定取消预约?', '提示', {type:'warning'})
         await axios.post(`${API_BASE}/parking/cancel`, { order_no: order.order_no })
         ElMessage.success('已取消')
-        fetchSpots(); fetchOrders()
+        // 数据会通过WebSocket自动更新，不需要手动刷新
     } catch(e){}
 }
 
@@ -147,11 +175,25 @@ const getStatusText = (s) => ({0:'空闲',1:'占用',2:'已预约',3:'待支付'
 const getOrderStatus = (s) => ({0:'已预约',1:'停车中',2:'已完成',3:'待支付',4:'已取消'}[s])
 
 onMounted(() => {
-    if(!user.value) router.push('/login')
-    else {
-        fetchSpots(); fetchOrders(); fetchUserProfile()
-        setInterval(() => { fetchSpots(); fetchOrders() }, 3000)
+    if(!user.value) {
+        router.push('/login')
+    } else {
+        // 初始化WebSocket连接
+        setupWebSocket()
+        
+        // 获取初始数据（只调用一次）
+        fetchSpots()
+        fetchOrders()
+        fetchUserProfile()
+        
+        // 注意：这里不再使用setInterval轮询，改为WebSocket事件驱动
     }
+})
+
+onUnmounted(() => {
+    // 清理WebSocket订阅
+    if (unsubscribeSpots) unsubscribeSpots()
+    if (unsubscribeOrders) unsubscribeOrders()
 })
 </script>
 

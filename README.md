@@ -33,3 +33,5 @@ source venv/bin/activate  # Mac/Linux
 # venv\Scripts\activate   # Windows
 pip install -r requirements.txt
 python run.py
+
+检查每个页面的ui，调整其中不合理的布局

@@ -64,3 +64,27 @@ class Order(db.Model):
     actual_in_time = db.Column(db.DateTime)
     actual_out_time = db.Column(db.DateTime)
     total_fee = db.Column(db.Numeric(10, 2), default=0.00)
+
+# ================= 费用规则模型（适配现有表结构） =================
+class FeeRule(db.Model):
+    __tablename__ = 'fee_rule'
+    
+    rule_id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    rule_name = db.Column(db.String(50), nullable=False)  # 规则名称
+    base_price = db.Column(db.Numeric(10, 2), default=0.00)  # 基础价格
+    unit_price = db.Column(db.Numeric(10, 2), default=0.00)  # 单位价格（每分钟）
+    free_minutes = db.Column(db.Integer, default=0)  # 免费分钟数
+    target_role = db.Column(db.String(20), nullable=False)  # 目标角色
+    
+    def to_dict(self):
+        """序列化方法"""
+        return {
+            'rule_id': self.rule_id,
+            'rule_name': self.rule_name,
+            'user_role': self.target_role,  # 映射到统一的字段名
+            'base_fee': float(self.base_price),
+            'rate_per_minute': float(self.unit_price),
+            'free_minutes': self.free_minutes,
+            'is_active': True,  # 现有表没有此字段，默认为激活
+            'priority': 1  # 现有表没有此字段，默认优先级
+        }
