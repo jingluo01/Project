@@ -29,12 +29,14 @@ def register():
     username = data.get('username')
     password = data.get('password')
     role = data.get('role', 1) # 默认学生
+    user_no = data.get('user_no') # 获取学号/工号
     
     if not username or not password:
         return Result.error(msg="用户名和密码不能为空")
 
     try:
-        res = auth_service.register(username, password, role)
+        # 传入 user_no
+        res = auth_service.register(username, password, role, user_no)
         return Result.success(res, msg="注册成功")
     except ValueError as e:
         return Result.fail(str(e))

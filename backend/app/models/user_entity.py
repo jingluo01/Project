@@ -6,8 +6,9 @@ class SysUser(db.Model):
     __tablename__ = 'sys_user'
 
     user_id = db.Column(db.Integer, primary_key=True, comment='用户ID')
-    username = db.Column(db.String(64), unique=True, nullable=False, comment='用户名')
+    # 新增字段: 学号/工号
     user_no = db.Column(db.String(32), unique=True, nullable=True, comment='学号/工号')
+    username = db.Column(db.String(64), unique=True, nullable=False, comment='用户名')
     password_hash = db.Column(db.String(128), nullable=False, comment='加密密码')
     
     # 角色: 0-校外人员, 1-学生, 2-教职工 (影响计费费率)
@@ -24,8 +25,8 @@ class SysUser(db.Model):
     def to_dict(self):
         return {
             'user_id': self.user_id,
+            'user_no': self.user_no, # 返回工号
             'username': self.username,
-            'user_no': self.user_no,
             'role': self.role,
             'credit_score': self.credit_score,
             'balance': float(self.balance)

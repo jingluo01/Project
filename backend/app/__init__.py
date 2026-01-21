@@ -15,9 +15,7 @@ def create_app(config_name='default'):
     from app.models import SysUser, Car, ParkingZone, ParkingSpot, ParkingOrder
     
     # 4. 注册蓝图 (Controller)
-    # TODO: 等我们写好 Controller 后，在这里取消注释
-    # from app.controllers.auth_controller import auth_bp
-    # app.register_blueprint(auth_bp)
+    register_blueprints(app)
     
     @app.route('/health')
     def health_check():
@@ -31,3 +29,21 @@ def register_extensions(app):
     migrate.init_app(app, db)
     redis_client.init_app(app)
     socketio.init_app(app)
+
+def register_blueprints(app):
+    """注册所有蓝图"""
+    # 认证相关接口
+    from app.routes.auth_controller import auth_bp
+    app.register_blueprint(auth_bp)
+    
+    # 用户相关接口
+    from app.routes.user_controller import user_bp
+    app.register_blueprint(user_bp)
+    
+    print("✅ 已注册蓝图:")
+    print(f"   - auth_bp: {auth_bp.url_prefix}")
+    print(f"   - user_bp: {user_bp.url_prefix}")
+    
+    # 未来可以在这里添加更多蓝图
+    # from app.routes.parking_controller import parking_bp
+    # app.register_blueprint(parking_bp)

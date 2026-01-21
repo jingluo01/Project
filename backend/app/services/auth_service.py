@@ -25,24 +25,29 @@ class AuthService:
             "user": user.to_dict()
         }
 
-    def register(self, username, password, role=1):
+    def register(self, username, password, role=1, user_no=None):
         """注册逻辑"""
         # 1. 检查用户名是否存在
         if UserDao.exists_username(username):
             raise ValueError("用户名已存在")
 
+        # 2. 检查学号/工号是否重复 (如果有值的话)
+        if user_no and UserDao.exists_user_no(user_no):
+            raise ValueError(f"该学号/工号 {user_no} 已被注册")
+
         try:
-            # 2. 创建用户实体
+            # 3. 创建用户实体
             new_user = SysUser(
                 username=username,
-                password_hash=generate_password_hash(password), # 密码加密
+                user_no=user_no, # 存入工号
+                password_hash=generate_password_hash(password),
                 role=role
             )
             
-            # 3. 调用 DAO
+            # 4. 调用 DAO
             UserDao.add_user(new_user)
             
-            # 4. 提交事务 (原子操作)
+            # 5. 提交事务
             db.session.commit()
             
             return new_user.to_dict()
