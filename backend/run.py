@@ -1,11 +1,14 @@
 import os
-from app import create_app, socketio
+from app import create_app
+from app.extensions import socketio
+from app.tasks.timeout_checker import start_scheduler
 
-# 从环境变量获取配置模式，默认为 'default'
-app = create_app(os.getenv('FLASK_CONFIG') or 'default')
+# Create app instance
+app = create_app(os.getenv('FLASK_ENV', 'development'))
+
+# Start background scheduler
+start_scheduler(app)
 
 if __name__ == '__main__':
-    # 注意：使用 socketio.run 而不是 app.run，以支持 WebSocket
-    # 使用端口 5001 避免与 macOS AirPlay 冲突
-    print("🚀 Smart Parking System is starting on http://0.0.0.0:5001")
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True, allow_unsafe_werkzeug=True)
+    # Run with SocketIO
+    socketio.run(app, host='0.0.0.0', port=5001, debug=True)

@@ -1,49 +1,36 @@
 from flask import Flask
+from flask_cors import CORS
 from config import config
-from app.extensions import db, migrate, socketio, redis_client
+from app.extensions import db, socketio, init_redis
 
 def create_app(config_name='default'):
+    """Application factory"""
     app = Flask(__name__)
     
-    # 1. 加载配置
+    # Load configuration
     app.config.from_object(config[config_name])
     
-    # 2. 初始化扩展
-    register_extensions(app)
-    
-    # 3. 导入模型 (必须在 db.init_app 之后)
-    from app.models import SysUser, Car, ParkingZone, ParkingSpot, ParkingOrder
-    
-    # 4. 注册蓝图 (Controller)
-    register_blueprints(app)
-    
-    @app.route('/health')
-    def health_check():
-        return {"status": "ok", "message": "Smart Parking System is running..."}
-
-    return app
-
-def register_extensions(app):
-    """绑定插件与 App"""
+    # Initialize extensions
     db.init_app(app)
-    migrate.init_app(app, db)
-    redis_client.init_app(app)
     socketio.init_app(app)
-
-def register_blueprints(app):
-    """注册所有蓝图"""
-    # 认证相关接口
-    from app.routes.auth_controller import auth_bp
-    app.register_blueprint(auth_bp)
+    init_redis(app)
+    CORS(app, origins=app.config.get('CORS_ORIGINS', '*').split(','))
     
-    # 用户相关接口
-    from app.routes.user_controller import user_bp
-    app.register_blueprint(user_bp)
+    # Register blueprints
+    from app.blueprints.auth import auth_bp
+    from app.blueprints.user import user_bp
+    from app.blueprints.parking import parking_bp
+    from app.blueprints.order import order_bp
+    from app.blueprints.admin import admin_bp
     
-    print("✅ 已注册蓝图:")
-    print(f"   - auth_bp: {auth_bp.url_prefix}")
-    print(f"   - user_bp: {user_bp.url_prefix}")
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(user_bp, url_prefix='/api/user')
+    app.register_blueprint(parking_bp, url_prefix='/api/parking')
+    app.register_blueprint(order_bp, url_prefix='/api/order')
+    app.register_blueprint(admin_bp, url_prefix='/api/admin')
     
-    # 未来可以在这里添加更多蓝图
-    # from app.routes.parking_controller import parking_bp
-    # app.register_blueprint(parking_bp)
+    # Register SocketIO events
+    from app.blueprints.parking import register_socketio_events
+    register_socketio_events(socketio)
+    
+    return app

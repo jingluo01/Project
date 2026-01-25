@@ -1,11 +1,13 @@
-<script setup>
-import { RouterView } from 'vue-router'
-</script>
-
 <template>
-  <RouterView />
+  <router-view />
 </template>
 
+<script setup>
+</script>
+
 <style>
-body { margin: 0; padding: 0; background: #f0f2f5; font-family: sans-serif; }
+#app {
+  width: 100%;
+  height: 100vh;
+}
 </style>

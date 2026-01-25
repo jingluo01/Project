@@ -1,65 +1,94 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import LoginView from '../views/LoginView.vue'
-import DashboardView from '../views/DashboardView.vue'
-import AdminView from '../views/AdminView.vue'
-// 👇 1. 引入新页面组件
-import ProfileView from '../views/ProfileView.vue' 
+import { useUserStore } from '@/stores/user'
+
+const routes = [
+    {
+        path: '/login',
+        name: 'Login',
+        component: () => import('@/views/Login.vue'),
+        meta: { requiresAuth: false }
+    },
+    {
+        path: '/register',
+        name: 'Register',
+        component: () => import('@/views/Register.vue'),
+        meta: { requiresAuth: false }
+    },
+    {
+        path: '/',
+        redirect: '/parking'
+    },
+    {
+        path: '/parking',
+        name: 'ParkingMap',
+        component: () => import('@/views/ParkingMap.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/profile',
+        name: 'UserProfile',
+        component: () => import('@/views/UserProfile.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/orders',
+        name: 'OrderHistory',
+        component: () => import('@/views/OrderHistory.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/admin',
+        component: () => import('@/views/admin/AdminLayout.vue'),
+        redirect: '/admin/dashboard',
+        meta: { requiresAuth: true, requiresAdmin: true },
+        children: [
+            {
+                path: 'dashboard',
+                name: 'AdminDashboard',
+                component: () => import('@/views/admin/Dashboard.vue')
+            },
+            {
+                path: 'users',
+                name: 'UserManagement',
+                component: () => import('@/views/admin/UserManagement.vue')
+            },
+            {
+                path: 'parking',
+                name: 'ParkingManagement',
+                component: () => import('@/views/admin/ParkingManagement.vue')
+            },
+            {
+                path: 'orders',
+                name: 'OrderManagement',
+                component: () => import('@/views/admin/OrderManagement.vue')
+            }
+        ]
+    }
+]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      redirect: '/dashboard'
-    },
-    {
-      path: '/login',
-      name: 'login',
-      component: LoginView
-    },
-    {
-      path: '/dashboard',
-      name: 'dashboard',
-      component: DashboardView
-    },
-    {
-      path: '/admin',
-      name: 'admin',
-      component: AdminView
-    },
-    // 👇 2. 注册路由：/profile
-    {
-      path: '/profile',
-      name: 'profile',
-      component: ProfileView
-    }
-  ]
+    history: createWebHistory(),
+    routes
 })
 
-// === 全局路由守卫 ===
+// Navigation guard
 router.beforeEach((to, from, next) => {
-  const userStr = localStorage.getItem('user')
-  const user = userStr ? JSON.parse(userStr) : null
-  
-  // 去登录页直接放行
-  if (to.name === 'login') {
-    next()
-    return
-  }
+    const userStore = useUserStore()
 
-  // 没登录强制踢回登录页
-  if (!user) {
-    next({ name: 'login' })
-    return
-  }
-
-  // 权限校验：非管理员不能进 admin
-  if (to.path.startsWith('/admin') && user.role !== 'admin') {
-     next({ name: 'dashboard' })
-     return
-  }
-
-  next()
+    if (to.meta.requiresAuth && !userStore.isLoggedIn) {
+        next('/login')
+    } else if (to.meta.requiresAdmin && !userStore.isAdmin) {
+        next('/parking')
+    } else if ((to.path === '/login' || to.path === '/register') && userStore.isLoggedIn) {
+        // Redirect to appropriate dashboard based on role
+        if (userStore.isAdmin) {
+            next('/admin/dashboard')
+        } else {
+            next('/parking')
+        }
+    } else {
+        next()
+    }
 })
 
 export default router

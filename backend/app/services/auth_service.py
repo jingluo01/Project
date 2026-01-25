@@ -1,56 +1,93 @@
-from werkzeug.security import generate_password_hash, check_password_hash
-from app.dao.user_dao import UserDao
-from app.models.user_entity import SysUser
-from app.utils.jwt_util import JwtUtil
 from app.extensions import db
+from app.models.user import SysUser
+from app.utils.auth_utils import hash_password, verify_password, generate_token
+from app.utils.validators import validate_user_no
 
 class AuthService:
-    def login(self, username, password):
-        """登录逻辑"""
-        user = UserDao.get_by_username(username)
+    @staticmethod
+    def login(user_no, password):
+        """用户登录业务逻辑"""
+        if not user_no or not password:
+            return {'success': False, 'message': '学号/工号和密码不能为空'}, 400
         
-        # 1. 用户不存在或密码错误
-        if not user or not check_password_hash(user.password_hash, password):
-            raise ValueError("用户名或密码错误")
+        user = SysUser.query.filter_by(user_no=user_no).first()
+        if not user:
+            return {'success': False, 'message': '用户不存在'}, 404
         
-        # 2. 账号被冻结
         if not user.is_active:
-            raise ValueError("账号已被冻结")
-
-        # 3. 生成 Token
-        token = JwtUtil.generate_token(user.user_id)
+            return {'success': False, 'message': '账号已被禁用'}, 403
         
+        if not verify_password(user.password, password):
+            return {'success': False, 'message': '密码错误'}, 401
+        
+        token = generate_token(user.user_id, user.role)
         return {
-            "token": token,
-            "user": user.to_dict()
-        }
+            'success': True,
+            'message': '登录成功',
+            'data': {
+                'token': token,
+                'user': user.to_dict()
+            }
+        }, 200
 
-    def register(self, username, password, role=1, user_no=None):
-        """注册逻辑"""
-        # 1. 检查用户名是否存在
-        if UserDao.exists_username(username):
-            raise ValueError("用户名已存在")
-
-        # 2. 检查学号/工号是否重复 (如果有值的话)
-        if user_no and UserDao.exists_user_no(user_no):
-            raise ValueError(f"该学号/工号 {user_no} 已被注册")
-
+    @staticmethod
+    def register(user_no, username, password, role=1):
+        """用户注册业务逻辑"""
+        if not user_no or not username or not password:
+            return {'success': False, 'message': '请填写完整信息'}, 400
+        
+        if not validate_user_no(user_no):
+            return {'success': False, 'message': '学号/工号格式不正确'}, 400
+        
+        if len(password) < 6:
+            return {'success': False, 'message': '密码长度至少6位'}, 400
+        
+        if SysUser.query.filter_by(user_no=user_no).first():
+            return {'success': False, 'message': '该学号/工号已注册'}, 409
+        
+        new_user = SysUser(
+            user_no=user_no,
+            username=username,
+            password=hash_password(password),
+            role=role,
+            credit_score=100,
+            balance=0.00
+        )
+        
         try:
-            # 3. 创建用户实体
-            new_user = SysUser(
-                username=username,
-                user_no=user_no, # 存入工号
-                password_hash=generate_password_hash(password),
-                role=role
-            )
-            
-            # 4. 调用 DAO
-            UserDao.add_user(new_user)
-            
-            # 5. 提交事务
+            db.session.add(new_user)
             db.session.commit()
             
-            return new_user.to_dict()
+            token = generate_token(new_user.user_id, new_user.role)
+            return {
+                'success': True,
+                'message': '注册成功',
+                'data': {
+                    'token': token,
+                    'user': new_user.to_dict()
+                }
+            }, 201
         except Exception as e:
-            db.session.rollback() # 发生异常回滚
-            raise e
+            db.session.rollback()
+            return {'success': False, 'message': f'注册失败: {str(e)}'}, 500
+
+    @staticmethod
+    def reset_password(user_no, new_password):
+        """密码重置业务逻辑"""
+        if not user_no or not new_password:
+            return {'success': False, 'message': '请填写完整信息'}, 400
+        
+        if len(new_password) < 6:
+            return {'success': False, 'message': '密码长度至少6位'}, 400
+        
+        user = SysUser.query.filter_by(user_no=user_no).first()
+        if not user:
+            return {'success': False, 'message': '用户不存在'}, 404
+        
+        try:
+            user.password = hash_password(new_password)
+            db.session.commit()
+            return {'success': True, 'message': '密码重置成功'}, 200
+        except Exception as e:
+            db.session.rollback()
+            return {'success': False, 'message': f'密码重置失败: {str(e)}'}, 500

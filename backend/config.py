@@ -1,29 +1,61 @@
 import os
+from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Config:
-    """基础配置"""
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'hard-to-guess-string-for-dev'
+    """Base configuration"""
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
-    # 数据库配置 (MySQL)
-    # 格式: mysql+pymysql://username:password@host:port/database
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'mysql+pymysql://root:123456@localhost:3306/smart_parking'
+    # Database
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        'DATABASE_URL',
+        'mysql+pymysql://root:password@localhost:3306/campus_parking'
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ECHO = False  # 设为 True 可在控制台打印 SQL 语句，方便调试
+    SQLALCHEMY_ECHO = False
+    
+    # Redis
+    REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # JWT
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'jwt-secret-key-change-in-production')
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=24)
+    
+    # SocketIO
+    SOCKETIO_MESSAGE_QUEUE = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+    
+    # Parking System Settings
+    PAYMENT_TIMEOUT_HOURS = 24  # 24小时未支付视为违约
+    CREDIT_PENALTY_TIMEOUT = 30  # 违约扣除信用分
+    CREDIT_PENALTY_DELAY = 10  # 超时扣除信用分
 
-    # Redis 配置
-    REDIS_URL = os.environ.get('REDIS_URL') or 'redis://localhost:6379/0'
+    MIN_CREDIT_SCORE = 70  # 最低信用分要求
+    PERFECT_CREDIT_SCORE = 100  # 完美信用分
+    FEE_MULTIPLIER = 10.0  # 费用倍率因子（开发测试用）
+    RESERVATION_TIMEOUT_MINUTES = 180 # 预约超时时间(分钟)，设为3小时
+    VIOLATION_FEE = 5.00 # 预约违约金(元)
+    
+    # Role-based Discount
+    ROLE_DISCOUNT = {
+        0: 1.0,   # 外部用户，无折扣
+        1: 0.9,   # 学生，9折
+        2: 0.8,   # 教职工，8折
+    }
+
 
 class DevelopmentConfig(Config):
-    """开发环境配置"""
+    """Development configuration"""
     DEBUG = True
-    SQLALCHEMY_ECHO = True # 开发模式下打印 SQL
+    SQLALCHEMY_ECHO = False # 关闭 SQL 回显，显著提升控制台性能和 API 响应感受
+
 
 class ProductionConfig(Config):
-    """生产环境配置"""
+    """Production configuration"""
     DEBUG = False
 
-# 映射字典，方便在工厂函数中调用
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,

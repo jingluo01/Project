@@ -1,43 +1,66 @@
-from app.dao.user_dao import UserDao
-from app.models.user_entity import Car
 from app.extensions import db
+from app.models.user import SysUser
+from app.services.car_service import CarService
+from app.utils.service_utils import handle_service_exception
+from decimal import Decimal
 
 class UserService:
-    def get_user_profile(self, user_id):
-        """获取个人信息及名下车辆"""
-        user = UserDao.get_by_id(user_id)
-        if not user:
-            raise ValueError("用户不存在")
-        
-        # 获取关联车辆
-        cars = UserDao.get_cars_by_user_id(user_id)
-        
-        # 组合数据
-        data = user.to_dict()
-        data['cars'] = [car.to_dict() for car in cars]
-        return data
+    @staticmethod
+    def get_profile(user):
+        """获取用户画像逻辑"""
+        profile = user.to_dict()
+        profile['cars'] = CarService.get_user_cars(user)
+        return {'success': True, 'data': profile}, 200
 
-    def bind_car(self, user_id, plate_number):
-        """绑定车辆"""
-        # 1. 校验车牌是否已被绑定
-        exist_car = UserDao.get_car_by_plate(plate_number)
-        if exist_car:
-            if exist_car.user_id == user_id:
-                raise ValueError("你已经绑定过该车辆了")
-            else:
-                raise ValueError("该车牌已被其他用户绑定")
+    @staticmethod
+    @handle_service_exception(message_prefix="充值失败")
+    def recharge(user, amount):
+        """账户充值业务逻辑"""
+        if not amount:
+            return {'success': False, 'message': '充值金额不能为空'}, 400
         
-        try:
-            # 2. 创建车辆
-            new_car = Car(user_id=user_id, plate_number=plate_number)
-            UserDao.add_car(new_car)
-            db.session.commit()
-            return new_car.to_dict()
-        except Exception as e:
-            db.session.rollback()
-            raise e
-            
-    def unbind_car(self, user_id, car_id):
-        """解绑车辆"""
-        # 逻辑留空，可视需求添加
-        pass
+        amount = Decimal(str(amount))
+        if amount <= 0:
+            return {'success': False, 'message': '充值金额必须大于0'}, 400
+        
+        user.balance += amount
+        db.session.commit()
+        return {
+            'success': True,
+            'message': '充值成功',
+            'data': {'balance': float(user.balance)}
+        }, 200
+
+    @staticmethod
+    def get_users_list(page=1, per_page=20):
+        """获取用户列表逻辑"""
+        pagination = SysUser.query.order_by(SysUser.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        return {
+            'success': True,
+            'data': {
+                'users': [user.to_dict() for user in pagination.items],
+                'total': pagination.total,
+                'page': page,
+                'per_page': per_page
+            }
+        }, 200
+
+    @staticmethod
+    @handle_service_exception(message_prefix="用户信息更新失败")
+    def update_user(user_id, data):
+        """更新用户信息逻辑"""
+        user = SysUser.query.get(user_id)
+        if not user:
+            return {'success': False, 'message': '用户不存在'}, 404
+        
+        if 'credit_score' in data:
+            user.credit_score = data['credit_score']
+        if 'balance' in data:
+            user.balance = Decimal(str(data['balance']))
+        if 'is_active' in data:
+            user.is_active = data['is_active']
+        
+        db.session.commit()
+        return {'success': True, 'message': '用户信息更新成功', 'data': user.to_dict()}, 200
