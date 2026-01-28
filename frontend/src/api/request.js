@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+import { useUserStore } from '@/stores/user'
 
 const request = axios.create({
     baseURL: '/api',
@@ -38,10 +39,14 @@ request.interceptors.response.use(
             const { status, data } = error.response
 
             if (status === 401) {
-                ElMessage.error('登录已过期，请重新登录')
-                localStorage.removeItem('token')
-                localStorage.removeItem('user')
-                router.push('/login')
+                const userStore = useUserStore()
+                // 如果后端提供了具体原因（如被踢下线），则优先显示后端消息
+                const errorMsg = data.message || '登录已过期，请重新登录'
+                ElMessage.error(errorMsg)
+
+                // 清理状态并执行硬跳转
+                userStore.logout()
+                window.location.href = '/login?reason=kickout'
             } else if (status === 403) {
                 ElMessage.error(data.message || '没有权限')
             } else if (status === 404) {

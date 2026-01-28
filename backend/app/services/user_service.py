@@ -55,6 +55,11 @@ class UserService:
         if not user:
             return {'success': False, 'message': '用户不存在'}, 404
         
+        # 允许修改的字段
+        if 'username' in data:
+            user.username = data['username']
+        if 'role' in data:
+            user.role = data['role']
         if 'credit_score' in data:
             user.credit_score = data['credit_score']
         if 'balance' in data:

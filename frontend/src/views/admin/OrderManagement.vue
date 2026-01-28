@@ -6,6 +6,17 @@
         <p class="subtitle">共处理 {{ total }} 笔停车业务</p>
       </div>
       <div class="header-filters">
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          style="width: 250px"
+          @change="fetchOrders"
+        />
         <el-select 
           v-model="statusFilter" 
           placeholder="订单状态" 
@@ -22,10 +33,10 @@
           <el-option label="超时违约" :value="6" />
         </el-select>
         <el-input
-          v-model="searchNo"
-          placeholder="搜索订单号/车牌..."
+          v-model="searchKeyword"
+          placeholder="搜索订单/车牌/姓名/学号..."
           prefix-icon="Search"
-          style="width: 220px"
+          style="width: 260px"
           clearable
           @clear="fetchOrders"
           @keyup.enter="fetchOrders"
@@ -41,10 +52,18 @@
           <span class="plate-highlight">{{ row.plate_number }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="关联用户" min-width="150">
+        <template #default="{ row }">
+          <div class="user-cell">
+            <span class="username">{{ row.username }}</span>
+            <span class="user-no">{{ row.user_no }}</span>
+          </div>
+        </template>
+      </el-table-column>
       <el-table-column label="停留时段" min-width="210">
         <template #default="{ row }">
           <div class="time-range">
-            <div class="time-line"><span class="dot in"></span> {{ formatDate(row.in_time) }}</div>
+            <div class="time-line"><span class="dot in"></span> {{ formatDate(row.in_time || row.reserve_time) }}</div>
             <div v-if="row.out_time" class="time-line mt-1">
               <span class="dot out"></span> {{ formatDate(row.out_time) }}
             </div>
@@ -72,13 +91,21 @@
           <div class="op-buttons">
             <el-button size="small" type="primary" link icon="Document" @click="viewDetail(row)">详情</el-button>
             <el-button 
+              v-if="row.status === 0" 
+              size="small" 
+              type="info" 
+              link 
+              icon="Close"
+              @click="handleForceCancel(row)"
+            >取消</el-button>
+            <el-button 
               v-if="row.status === 1" 
               size="small" 
               type="warning" 
               link 
               icon="VideoPause"
               @click="handleForceClose(row)"
-            >强制结束</el-button>
+            >结束</el-button>
             <el-button 
               v-if="row.status === 3" 
               size="small" 
@@ -143,8 +170,12 @@
               <span class="value">{{ currentOrder.spot_no || '-' }}</span>
             </div>
             <div class="detail-item">
+              <span class="label">预约时间</span>
+              <span class="value">{{ formatDate(currentOrder.reserve_time) }}</span>
+            </div>
+            <div class="detail-item">
               <span class="label">入场时间</span>
-              <span class="value">{{ formatDate(currentOrder.in_time) }}</span>
+              <span class="value">{{ currentOrder.in_time ? formatDate(currentOrder.in_time) : '尚未入场' }}</span>
             </div>
             <div class="detail-item">
               <span class="label">出场时间</span>
@@ -172,6 +203,12 @@
 
         <div class="drawer-footer">
           <el-button 
+            v-if="currentOrder.status === 0" 
+            type="info" 
+            style="flex: 1"
+            @click="handleForceCancel(currentOrder)"
+          >强制取消预约</el-button>
+          <el-button 
             v-if="currentOrder.status === 1" 
             type="warning" 
             style="flex: 1"
@@ -191,7 +228,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getAllOrders } from '@/api/admin'
+import { getAllOrders, forceExitOrder } from '@/api/admin'
+import { refundOrder, cancelOrder } from '@/api/order'
 import { formatCurrency, formatDate, getOrderStatusText, getOrderStatusType } from '@/utils/format'
 import { ElMessageBox, ElMessage } from 'element-plus'
 
@@ -201,7 +239,8 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
 const statusFilter = ref(null)
-const searchNo = ref('')
+const searchKeyword = ref('')
+const dateRange = ref([])
 
 const getCustomStatusClass = (status) => {
   if (status === 1) return 'status-parking'  // 进行中 - 紫色
@@ -215,21 +254,21 @@ const currentOrder = ref(null)
 const fetchOrders = async () => {
   loading.value = true
   try {
-    const res = await getAllOrders(page.value, pageSize.value, statusFilter.value)
-    // 简单的前端模糊搜索，作为 API 搜索的补充（如果后端没实现该字段搜索）
-    let filtered = res.data.orders
-    if (searchNo.value) {
-      const q = searchNo.value.toLowerCase()
-      filtered = filtered.filter(o => 
-        o.order_no.toLowerCase().includes(q) || 
-        o.plate_number.toLowerCase().includes(q)
-      )
-      // FIX: 搜索时更新统计总数，确保分页栏联动
-      total.value = filtered.length
-    } else {
-      total.value = res.data.total
+    const params = {
+      page: page.value,
+      perPage: pageSize.value,
+      status: statusFilter.value,
+      query: searchKeyword.value
     }
-    orders.value = filtered
+    
+    if (dateRange.value && dateRange.value.length === 2) {
+      params.startDate = dateRange.value[0] + ' 00:00:00'
+      params.endDate = dateRange.value[1] + ' 23:59:59'
+    }
+
+    const res = await getAllOrders(params)
+    orders.value = res.data.orders
+    total.value = res.data.total
   } finally {
     loading.value = false
   }
@@ -245,18 +284,38 @@ const handleForceClose = (order) => {
     confirmButtonText: '确定释放',
     cancelButtonText: '取消',
     type: 'warning'
-  }).then(() => {
-    ElMessage.success('订单已强制关闭，车位已释放')
-    showDetail.value = false
-    fetchOrders()
+  }).then(async () => {
+    try {
+      await forceExitOrder(order.plate_number)
+      ElMessage.success('订单已强制关闭，车位已释放，请提醒用户及时支付账单')
+      showDetail.value = false
+      fetchOrders()
+    } catch (err) {}
+  })
+}
+
+const handleForceCancel = (order) => {
+  ElMessageBox.confirm('确定要强制取消该预约吗？此操作将立即释放预留车位。', '操作确认', {
+    confirmButtonText: '确定取消',
+    type: 'info'
+  }).then(async () => {
+    try {
+      await cancelOrder({ order_id: order.order_id })
+      ElMessage.success('预约已成功取消并释放')
+      showDetail.value = false
+      fetchOrders()
+    } catch (err) {}
   })
 }
 
 const handleRefund = (order) => {
-  ElMessageBox.confirm('确定要为该笔金额执行全额退款吗？资金将充值回用户余额。', '退款确认').then(() => {
-    ElMessage.success('退款成功，资金已到账')
-    showDetail.value = false
-    fetchOrders()
+  ElMessageBox.confirm('确定要为该笔金额执行全额退款吗？资金将充值回用户余额。', '退款确认').then(async () => {
+    try {
+      await refundOrder({ order_id: order.order_id })
+      ElMessage.success('退款成功，资金已原路返还至用户余额')
+      showDetail.value = false
+      fetchOrders()
+    } catch (err) {}
   })
 }
 
@@ -335,5 +394,23 @@ onMounted(fetchOrders)
   --el-tag-bg-color: #dbeafe;
   --el-tag-border-color: #93c5fd;
   --el-tag-text-color: #1e40af;
+}
+
+/* User Cell Styling */
+.user-cell {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.4;
+}
+
+.username {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.user-no {
+  font-size: 11px;
+  color: #94a3b8;
+  font-family: 'JetBrains Mono', monospace;
 }
 </style>

@@ -15,6 +15,22 @@ def get_stats(current_user):
     result, status_code = AdminService.get_stats()
     return jsonify(result), status_code
 
+@admin_bp.route('/config', methods=['GET'])
+@token_required
+def get_system_config(current_user):
+    """获取系统业务配置 (数据库优先)"""
+    result, status_code = AdminService.get_system_config()
+    return jsonify(result), status_code
+
+@admin_bp.route('/config/update', methods=['POST'])
+@token_required
+@admin_required
+def update_system_config(current_user):
+    """更新系统业务配置"""
+    data = request.get_json()
+    result, status_code = AdminService.update_system_config(data)
+    return jsonify(result), status_code
+
 @admin_bp.route('/users', methods=['GET'])
 @token_required
 @admin_required
@@ -43,6 +59,16 @@ def update_parking(current_user):
     result, status_code = ParkingService.update_parking_or_zone(data)
     return jsonify(result), status_code
 
+@admin_bp.route('/order/force-exit', methods=['POST'])
+@token_required
+@admin_required
+def force_exit_order(current_user):
+    """管理员强制结束停车订单并计费"""
+    data = request.get_json()
+    plate_number = data.get('plate_number')
+    result, status_code = ParkingService.vehicle_exit(plate_number, auto_pay=False)
+    return jsonify(result), status_code
+
 @admin_bp.route('/orders', methods=['GET'])
 @token_required
 @admin_required
@@ -51,5 +77,17 @@ def get_all_orders(current_user):
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     status = request.args.get('status', type=int)
-    result, status_code = OrderService.search_orders(current_user, status, page, per_page)
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    query_keyword = request.args.get('query')
+    
+    result, status_code = OrderService.search_orders(
+        current_user, 
+        status, 
+        page, 
+        per_page,
+        start_date=start_date,
+        end_date=end_date,
+        query_keyword=query_keyword
+    )
     return jsonify(result), status_code

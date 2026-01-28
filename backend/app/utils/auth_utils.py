@@ -15,9 +15,12 @@ def verify_password(password_hash, password):
 
 def generate_token(user_id, role):
     """Generate JWT token"""
+    import uuid
     payload = {
         'user_id': user_id,
         'role': role,
+        'iat': datetime.utcnow(),
+        'nonce': str(uuid.uuid4()),
         'exp': datetime.utcnow() + current_app.config['JWT_ACCESS_TOKEN_EXPIRES']
     }
     token = jwt.encode(payload, current_app.config['JWT_SECRET_KEY'], algorithm='HS256')
@@ -55,8 +58,21 @@ def token_required(f):
         if not payload:
             return jsonify({'success': False, 'message': 'Token无效或已过期'}), 401
         
+        user_id = payload.get('user_id')
+        
+        # --- 核心：单设备登陆检查 ---
+        import app.extensions
+        if app.extensions.redis_client:
+            stored_token = app.extensions.redis_client.get(f"user_session:{user_id}")
+            if stored_token and stored_token != token:
+                return jsonify({
+                    'success': False, 
+                    'message': '您的账号已在别处登陆，请重新登陆',
+                    'kickout': True
+                }), 401
+        
         # Get current user
-        current_user = SysUser.query.get(payload['user_id'])
+        current_user = SysUser.query.get(user_id)
         if not current_user or not current_user.is_active:
             return jsonify({'success': False, 'message': '用户不存在或已被禁用'}), 401
         

@@ -9,8 +9,10 @@
         <div class="stat-info">
           <div class="stat-label">今日营收</div>
           <div class="stat-value">{{ formatCurrency(stats.today_revenue) }}</div>
-          <div class="stat-trend success">
-            <el-icon><CaretTop /></el-icon> <span>12.5%</span>
+          <div class="stat-trend" :class="stats.revenue_growth >= 0 ? 'success' : 'danger'">
+            <el-icon v-if="stats.revenue_growth >= 0"><CaretTop /></el-icon>
+            <el-icon v-else><CaretBottom /></el-icon>
+            <span>{{ Math.abs(stats.revenue_growth) }}%</span>
           </div>
         </div>
       </div>
@@ -109,13 +111,14 @@ import { getStats, getAllOrders } from '@/api/admin'
 import { formatCurrency, formatDate, getOrderStatusText, getOrderStatusType } from '@/utils/format'
 import * as echarts from 'echarts'
 import {
-  TrendCharts, UserFilled, Document, Location, CaretTop
+  TrendCharts, UserFilled, Document, Location, CaretTop, CaretBottom
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const loading = ref(false)
 const stats = ref({
   today_revenue: 0,
+  revenue_growth: 0,
   active_users: 0,
   current_orders: 0,
   available_spots: 0,
@@ -192,7 +195,7 @@ const fetchData = async () => {
   try {
     const [statsRes, ordersRes] = await Promise.all([
       getStats(),
-      getAllOrders(1, 10)
+      getAllOrders({ page: 1, perPage: 10 })
     ])
     stats.value = statsRes.data
     recentOrders.value = ordersRes.data.orders
@@ -245,6 +248,7 @@ onMounted(fetchData)
 .stat-value { font-size: 24px; font-weight: 700; color: #1e293b; }
 .stat-trend { font-size: 12px; margin-top: 4px; color: #94a3b8; }
 .stat-trend.success { color: #10b981; }
+.stat-trend.danger { color: #ef4444; }
 
 .charts-grid {
   display: grid;

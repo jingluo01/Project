@@ -1,4 +1,4 @@
-<template>
+  <template>
   <div class="register-container">
     <div class="register-box card">
       <h2 class="register-title">注册</h2>
@@ -9,21 +9,30 @@
         </el-form-item>
         
         <el-form-item prop="username">
-          <el-input v-model="registerForm.username" placeholder="姓名" size="large" @keyup.enter="handleRegister" />
+          <el-input v-model="registerForm.username" placeholder="真实姓名 (需与官方库一致)" size="large" @keyup.enter="handleRegister" />
         </el-form-item>
         
-        <el-form-item prop="role">
-          <el-select v-model="registerForm.role" placeholder="选择身份" size="large" style="width: 100%">
-            <el-option label="学生" :value="1" />
-            <el-option label="教职工" :value="2" />
-          </el-select>
-        </el-form-item>
+        <div class="identity-tip">
+          <el-icon><InfoFilled /></el-icon>
+          系统将自动验证您的校内身份并分配权限
+        </div>
         
         <el-form-item prop="password">
           <el-input 
             v-model="registerForm.password" 
             type="password" 
-            placeholder="密码" 
+            placeholder="设置登录密码" 
+            size="large" 
+            show-password 
+            @keyup.enter="handleRegister"
+          />
+        </el-form-item>
+
+        <el-form-item prop="confirmPassword">
+          <el-input 
+            v-model="registerForm.confirmPassword" 
+            type="password" 
+            placeholder="确认登录密码" 
             size="large" 
             show-password 
             @keyup.enter="handleRegister"
@@ -47,6 +56,7 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
+import { InfoFilled } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -56,17 +66,29 @@ const loading = ref(false)
 const registerForm = reactive({
   user_no: '',
   username: '',
-  role: 1,
-  password: ''
+  password: '',
+  confirmPassword: ''
 })
+
+const validatePass2 = (rule, value, callback) => {
+  if (value === '') {
+    callback(new Error('请再次输入密码'))
+  } else if (value !== registerForm.password) {
+    callback(new Error('两次输入密码不一致!'))
+  } else {
+    callback()
+  }
+}
 
 const rules = {
   user_no: [{ required: true, message: '请输入学号/工号', trigger: 'blur' }],
-  username: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择身份', trigger: 'change' }],
+  username: [{ required: true, message: '请输入真实姓名', trigger: 'blur' }],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
     { min: 6, message: '密码长度至少6位', trigger: 'blur' }
+  ],
+  confirmPassword: [
+    { required: true, validator: validatePass2, trigger: 'blur' }
   ]
 }
 
@@ -123,5 +145,22 @@ const handleRegister = async () => {
 .link {
   color: #667eea;
   text-decoration: none;
+}
+
+.identity-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(102, 126, 234, 0.1);
+  padding: 10px 14px;
+  border-radius: 8px;
+  color: #4c51bf;
+  font-size: 13px;
+  margin-bottom: 22px;
+  border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.identity-tip .el-icon {
+  font-size: 16px;
 }
 </style>

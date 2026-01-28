@@ -31,6 +31,9 @@
               <el-tag size="small" effect="dark" type="warning" class="fee-tag">
                 {{ zone.fee_rate }} 元/小时
               </el-tag>
+              <el-tag size="small" effect="dark" type="info" class="free-time-tag">
+                免费 {{ zone.free_time }} 分钟
+              </el-tag>
               <el-button 
                 type="primary" 
                 link 
@@ -70,9 +73,9 @@
     </div>
 
     <!-- Edit Fee Dialog -->
-    <el-dialog v-model="showFeeDialog" title="区域费率调整" width="350px">
+    <el-dialog v-model="showFeeDialog" title="区域计费配置" width="400px">
       <el-form label-position="top">
-        <el-form-item :label="`[${selectedZone?.name}] 当前费率 (元/小时)`">
+        <el-form-item :label="`[${selectedZone?.name}] 小时费率 (元/小时)`">
           <el-input-number 
             v-model="feeForm.fee_rate" 
             :min="0" 
@@ -81,6 +84,19 @@
             style="width: 100%"
             @keyup.enter="submitFeeUpdate"
           />
+        </el-form-item>
+        <el-form-item :label="`免费时长 (分钟)`">
+          <el-input-number 
+            v-model="feeForm.free_time" 
+            :min="0" 
+            :max="180" 
+            :step="5"
+            style="width: 100%"
+            @keyup.enter="submitFeeUpdate"
+          />
+          <div style="font-size: 12px; color: #94a3b8; margin-top: 4px;">
+            停车时长在此区间内免费，超出后开始计费
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -105,7 +121,7 @@
             <el-tag type="success" size="small">空闲</el-tag> 正常对外开放
           </el-radio>
           <el-radio :value="1" border class="radio-item">
-            <el-tag type="primary" size="small">占用</el-tag> 逻辑标记占用
+            <el-tag type="info" size="small">占用</el-tag> 逻辑标记占用
           </el-radio>
           <el-radio :value="2" border class="radio-item">
             <el-tag type="danger" size="small">故障</el-tag> 设为维护状态
@@ -134,7 +150,7 @@ const allSpots = ref([])
 
 const showFeeDialog = ref(false)
 const selectedZone = ref(null)
-const feeForm = ref({ zone_id: null, fee_rate: 0 })
+const feeForm = ref({ zone_id: null, fee_rate: 0, free_time: 0 })
 
 const showEditDialog = ref(false)
 const editForm = ref({ spot_id: null, status: 0 })
@@ -200,17 +216,25 @@ const getStatusClass = (status) => {
 
 const openFeeEdit = (zone) => {
   selectedZone.value = zone
-  // FIX: 使用后端正确的字段名 fee_rate
-  feeForm.value = { zone_id: zone.zone_id, fee_rate: zone.fee_rate }
+  // 获取完整的费率和免费时长配置
+  feeForm.value = { 
+    zone_id: zone.zone_id, 
+    fee_rate: zone.fee_rate,
+    free_time: zone.free_time || 0
+  }
   showFeeDialog.value = true
 }
 
 const submitFeeUpdate = async () => {
   submitting.value = true
   try {
-    // FIX: 提交正确的字段名
-    await updateParking({ zone_id: feeForm.value.zone_id, fee_rate: feeForm.value.fee_rate })
-    ElMessage.success('区域费率更新成功')
+    // 提交费率和免费时长配置
+    await updateParking({ 
+      zone_id: feeForm.value.zone_id, 
+      fee_rate: feeForm.value.fee_rate,
+      free_time: feeForm.value.free_time
+    })
+    ElMessage.success('区域计费配置更新成功')
     showFeeDialog.value = false
     fetchAllData()
   } finally {
@@ -307,6 +331,7 @@ onMounted(fetchAllData)
 }
 
 .fee-tag { background: #1e293b !important; color: #fbbf24 !important; border: none; font-weight: 700; }
+.free-time-tag { background: #3b82f6 !important; color: white !important; border: none; font-weight: 600; }
 
 .zone-summary {
   display: flex;

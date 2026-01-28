@@ -20,8 +20,7 @@ def register():
     result, status_code = AuthService.register(
         data.get('user_no'),
         data.get('username'),
-        data.get('password'),
-        data.get('role', 1)
+        data.get('password')
     )
     return jsonify(result), status_code
 

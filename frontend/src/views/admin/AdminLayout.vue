@@ -1,10 +1,10 @@
 <template>
   <div class="admin-layout">
     <!-- Sidebar -->
-    <div class="sidebar">
+    <div class="sidebar" :class="{ 'is-collapsed': isCollapse }">
       <div class="logo">
         <el-icon><OfficeBuilding /></el-icon>
-        <div class="logo-text">
+        <div class="logo-text" v-if="!isCollapse">
           <p>Smart Campus</p>
           <p>Parking System</p>
         </div>
@@ -16,6 +16,8 @@
         background-color="#1e293b"
         text-color="#ffffff" 
         active-text-color="#60a5fa"
+        :collapse="isCollapse"
+        :collapse-transition="false"
         @select="handleMenuSelect"
       >
         <el-menu-item index="/admin/dashboard">
@@ -45,6 +47,10 @@
     <div class="main-container">
       <div class="admin-header">
         <div class="header-left">
+          <el-icon class="collapse-btn" @click="toggleSidebar">
+            <Expand v-if="isCollapse" />
+            <Fold v-else />
+          </el-icon>
           <el-breadcrumb separator="/">
             <el-breadcrumb-item>管理中心</el-breadcrumb-item>
             <el-breadcrumb-item>{{ currentPageTitle }}</el-breadcrumb-item>
@@ -57,6 +63,12 @@
       </div>
       
       <div class="admin-content">
+        <!-- Mobile Overlay -->
+        <div 
+          v-if="isMobile && !isCollapse" 
+          class="mobile-overlay" 
+          @click="toggleSidebar"
+        ></div>
         <router-view />
       </div>
     </div>
@@ -64,16 +76,43 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { 
-  OfficeBuilding, DataAnalysis, User, Location, Document, Setting 
+  OfficeBuilding, DataAnalysis, User, Location, Document, Setting,
+  Fold, Expand
 } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+
+const isCollapse = ref(false)
+const isMobile = ref(false)
+
+const checkMobile = () => {
+  const width = window.innerWidth
+  isMobile.value = width < 768
+  if (isMobile.value) {
+    isCollapse.value = true // Collapse sidebar by default on mobile
+  } else {
+    isCollapse.value = width < 1200 // Collapse on tablet/smaller desktop
+  }
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
+
+const toggleSidebar = () => {
+  isCollapse.value = !isCollapse.value
+}
 
 const activeMenu = computed(() => route.path)
 
@@ -82,13 +121,17 @@ const currentPageTitle = computed(() => {
     '/admin/dashboard': '仪表盘',
     '/admin/users': '用户管理',
     '/admin/parking': '车位管理',
-    '/admin/orders': '订单管理'
+    '/admin/orders': '订单管理',
+    '/admin/settings': '系统设置'
   }
   return titles[route.path] || '管理中心'
 })
 
 const handleMenuSelect = (index) => {
   router.push(index)
+  if (isMobile.value) {
+    isCollapse.value = true // Close sidebar after selection on mobile
+  }
 }
 
 const handleLogout = () => {
@@ -111,17 +154,28 @@ const handleLogout = () => {
   background-color: #1e293b;
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  z-index: 1000; /* Increased z-index for mobile overlay */
+  transition: all 0.3s cubic-bezier(0.2, 0, 0, 1);
+  flex-shrink: 0; /* Prevent sidebar from shrinking */
+}
+
+.sidebar.is-collapsed {
+  width: 64px;
 }
 
 .logo {
-  height: 100px;
+  height: 64px; /* Match header height */
   display: flex;
   align-items: center;
   padding: 0 24px;
   gap: 12px;
   color: white;
   border-bottom: 1px solid rgba(255,255,255,0.1);
+  box-sizing: border-box;
+}
+
+.logo .el-icon {
+  font-size: 24px;
 }
 
 .logo-text p {
@@ -168,8 +222,25 @@ const handleLogout = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 30px;
+  padding: 0 20px;
   border-bottom: 1px solid #e2e8f0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.collapse-btn {
+  font-size: 20px;
+  cursor: pointer;
+  color: #64748b;
+  transition: color 0.2s;
+}
+
+.collapse-btn:hover {
+  color: #3b82f6;
 }
 
 .header-right {
@@ -189,5 +260,38 @@ const handleLogout = () => {
   overflow-y: auto;
   padding: 25px;
   background-color: #f1f5f9;
+  position: relative;
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+@media (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    height: 100vh;
+    left: 0;
+    top: 0;
+  }
+  
+  .sidebar.is-collapsed {
+    width: 0;
+    transform: translateX(-100%);
+  }
+
+  .admin-content {
+    padding: 15px;
+  }
+  
+  .admin-header {
+    padding: 0 15px;
+  }
 }
 </style>

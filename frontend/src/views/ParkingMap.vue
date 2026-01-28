@@ -166,10 +166,20 @@
                 :key="car.car_id"
                 :label="`${car.plate_number} ${car.nickname ? '(' + car.nickname + ')' : ''}`"
                 :value="car.plate_number"
+                :disabled="orderStore.getCarStatus(car.plate_number) !== null"
               >
                 <div class="car-option">
-                  <span class="car-plate">{{ car.plate_number }}</span>
-                  <span v-if="car.nickname" class="car-nick">{{ car.nickname }}</span>
+                  <div class="car-main-info">
+                    <span class="car-plate">{{ car.plate_number }}</span>
+                    <span v-if="car.nickname" class="car-nick">{{ car.nickname }}</span>
+                  </div>
+                  <el-tag 
+                    v-if="orderStore.getCarStatus(car.plate_number) !== null" 
+                    size="small" 
+                    :type="getOrderStatusType(orderStore.getCarStatus(car.plate_number))"
+                  >
+                    {{ getOrderStatusText(orderStore.getCarStatus(car.plate_number)) }}
+                  </el-tag>
                 </div>
               </el-option>
             </el-select>
@@ -177,7 +187,7 @@
           
           <el-alert
             title="温馨提示"
-            description="预约后请在15分钟内到达，否则将自动取消并扣除信用分"
+            :description="`预约后请在 ${reservationMinutes} 分钟内到达，否则将自动取消并扣除信用分`"
             type="info"
             :closable="false"
             show-icon
@@ -195,6 +205,171 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Payment Dialog -->
+    <el-dialog 
+      v-model="showPaymentDialog" 
+      title="选择支付方式" 
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <div class="payment-dialog-content">
+        <!-- Order Summary -->
+        <div class="order-summary-card">
+          <div class="summary-header">
+            <el-icon :size="24"><Van /></el-icon>
+            <span>订单信息</span>
+          </div>
+          <div class="summary-details">
+            <div class="detail-row">
+              <span class="label">车牌号码</span>
+              <span class="value">{{ currentPaymentOrder?.plate_number }}</span>
+            </div>
+            <div class="detail-row">
+              <span class="label">停车时长</span>
+              <span class="value">{{ formatDuration(orderDurations[currentPaymentOrder?.order_id] || 0) }}</span>
+            </div>
+            <div class="detail-row total">
+              <span class="label">应付金额</span>
+              <span class="value amount">{{ formatCurrency(currentPaymentOrder?.total_fee) }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Methods -->
+        <div class="payment-methods">
+          <div class="method-title">支付方式</div>
+          
+          <!-- Balance Payment -->
+          <div 
+            class="payment-method-card" 
+            :class="{ 
+              'selected': selectedPaymentMethod === 0,
+              'disabled': userStore.balance < (currentPaymentOrder?.total_fee || 0)
+            }"
+            @click="selectPaymentMethod(0)"
+          >
+            <div class="method-icon balance-icon">
+              <el-icon :size="28"><Wallet /></el-icon>
+            </div>
+            <div class="method-info">
+              <div class="method-name">余额支付</div>
+              <div class="method-desc">
+                当前余额：{{ formatCurrency(userStore.balance) }}
+                <span v-if="userStore.balance < (currentPaymentOrder?.total_fee || 0)" class="insufficient">（余额不足）</span>
+              </div>
+            </div>
+            <div class="method-check">
+              <el-icon v-if="selectedPaymentMethod === 0" :size="20" color="#10b981"><Check /></el-icon>
+            </div>
+          </div>
+
+          <!-- Alipay Payment -->
+          <div 
+            class="payment-method-card" 
+            :class="{ 
+              'selected': selectedPaymentMethod === 2
+            }"
+            @click="selectPaymentMethod(2)"
+          >
+            <div class="method-icon alipay-icon">
+              <svg viewBox="0 0 1024 1024" width="28" height="28">
+                <path d="M1024 701.9v162.5c0 88.7-71.8 160.5-160.5 160.5H160.5C71.8 1024.9 0 953.1 0 864.4V159.5C0 70.8 71.8-1 160.5-1h703c88.7 0 160.5 71.8 160.5 160.5v542.4zM643.5 548.5c-48.5-14.3-117.3-35.8-199.5-60.3-54.5 75-120.8 134.5-198.3 178.3 0 0-4.5 2.3-12 0-216-97.5-265.5-344.3-210.8-402 32.3-34.5 75.8-29.3 119.3 11.3 43.5 40.5 81.8 114 113.3 215.3 47.3-29.3 89.3-64.5 125.3-105 10.5-12 20.3-24.8 29.3-38.3-24-56.3-38.3-117.8-38.3-172.5 0-83.3 34.5-119.3 79.5-119.3s79.5 36 79.5 119.3c0 47.3-9.8 95.3-27 141.8 39.8 51 95.3 93.8 164.3 123.8l-24.8 108.5z m-192-332.3c-20.3 0-36.8 28.5-36.8 83.3 0 39.8 9 81 24 117.8 24-39.8 36.8-81.8 36.8-117.8 0-54.8-9-83.3-24-83.3z" fill="#00A0E9"/>
+              </svg>
+            </div>
+            <div class="method-info">
+              <div class="method-name">支付宝</div>
+              <div class="method-desc">扫码支付，安全便捷</div>
+            </div>
+            <div class="method-check">
+              <el-icon v-if="selectedPaymentMethod === 2" :size="20" color="#10b981"><Check /></el-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showPaymentDialog = false" size="large">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="confirmPayment" 
+            :loading="paying"
+            :disabled="selectedPaymentMethod === null || (selectedPaymentMethod === 0 && userStore.balance < (currentPaymentOrder?.total_fee || 0))"
+            size="large"
+          >
+            <el-icon class="mr-1"><Check /></el-icon>
+            确认支付
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Alipay QR Code Dialog -->
+    <el-dialog 
+      v-model="showQRCodeDialog" 
+      title="支付宝扫码支付" 
+      width="420px"
+      :close-on-click-modal="false"
+      @close="stopPolling"
+    >
+      <div class="qrcode-dialog-content">
+        <div class="qrcode-header">
+          <el-icon :size="32" color="#00A0E9"><svg viewBox="0 0 1024 1024" width="32" height="32">
+            <path d="M1024 701.9v162.5c0 88.7-71.8 160.5-160.5 160.5H160.5C71.8 1024.9 0 953.1 0 864.4V159.5C0 70.8 71.8-1 160.5-1h703c88.7 0 160.5 71.8 160.5 160.5v542.4zM643.5 548.5c-48.5-14.3-117.3-35.8-199.5-60.3-54.5 75-120.8 134.5-198.3 178.3 0 0-4.5 2.3-12 0-216-97.5-265.5-344.3-210.8-402 32.3-34.5 75.8-29.3 119.3 11.3 43.5 40.5 81.8 114 113.3 215.3 47.3-29.3 89.3-64.5 125.3-105 10.5-12 20.3-24.8 29.3-38.3-24-56.3-38.3-117.8-38.3-172.5 0-83.3 34.5-119.3 79.5-119.3s79.5 36 79.5 119.3c0 47.3-9.8 95.3-27 141.8 39.8 51 95.3 93.8 164.3 123.8l-24.8 108.5z m-192-332.3c-20.3 0-36.8 28.5-36.8 83.3 0 39.8 9 81 24 117.8 24-39.8 36.8-81.8 36.8-117.8 0-54.8-9-83.3-24-83.3z" fill="#00A0E9"/>
+          </svg></el-icon>
+          <div class="qrcode-title">
+            <div class="title-main">请使用支付宝扫码支付</div>
+            <div class="title-sub">支付金额：{{ formatCurrency(currentPaymentOrder?.total_fee) }}</div>
+          </div>
+        </div>
+
+        <div class="qrcode-container">
+          <div v-if="qrCodeLoading" class="qrcode-loading">
+            <el-icon class="is-loading" :size="40"><Loading /></el-icon>
+            <div>正在安全请求支付网关...</div>
+          </div>
+          
+          <!-- 新增：支付成功后的展示层，防止显示红叉 -->
+          <div v-else-if="pollingStatus === 'success'" class="qrcode-success-display">
+            <el-icon :size="80" color="#10b981" class="success-icon-animate"><SuccessFilled /></el-icon>
+            <div class="success-title">支付成功</div>
+            <div class="success-sub">感谢您的使用</div>
+          </div>
+
+          <div v-else-if="qrCodeUrl" class="qrcode-wrapper">
+            <!-- 使用国内访问更稳定的二维码引擎 -->
+            <img :src="`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrCodeUrl)}`" 
+                 alt="支付二维码" 
+                 class="qrcode-image"
+                 @load="qrCodeLoading = false" 
+            >
+            <div class="qrcode-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>二维码5分钟内有效</span>
+            </div>
+          </div>
+          <div v-else class="qrcode-error">
+            <el-icon :size="40" color="#ef4444"><CircleClose /></el-icon>
+            <div>二维码生成失败</div>
+          </div>
+        </div>
+
+        <!-- 底部状态栏，成功时隐藏，因为中间已经显示了大图标 -->
+        <div class="payment-status" v-if="pollingStatus !== 'success'">
+          <div v-if="pollingStatus === 'waiting'" class="status-waiting">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>正在等待您的扫码支付...</span>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showQRCodeDialog = false" size="large">取消支付</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -205,17 +380,44 @@ import { useUserStore } from '@/stores/user'
 import { useParkingStore } from '@/stores/parking'
 import { useOrderStore } from '@/stores/order'
 import { ElMessage } from 'element-plus'
-import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check } from '@element-plus/icons-vue'
+import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check, Loading, InfoFilled, CircleClose, SuccessFilled } from '@element-plus/icons-vue'
 import { initWebSocket, closeWebSocket } from '@/utils/websocket'
 import { formatCurrency, formatDuration } from '@/utils/format'
+
+import { getAdminConfig } from '@/api/admin'
+import { createAlipayQRCode, queryAlipayStatus } from '@/api/payment'
 
 const router = useRouter()
 const userStore = useUserStore()
 const parkingStore = useParkingStore()
 const orderStore = useOrderStore()
 
+// 状态映射常量
+const STATUS_MAP = {
+  SPOT_STATUS: {
+    0: { text: '空闲', class: 'spot-available' },
+    1: { text: '占用', class: 'spot-occupied' },
+    2: { text: '维修', class: 'spot-maintenance' },
+    3: { text: '已预约', class: 'spot-reserved' }
+  },
+  ORDER_STATUS: {
+    0: { text: '预约中', type: '', badge: 'RESERVED' },  // el-tag 不支持 primary，用空字符串（默认样式）
+    1: { text: '停车中', type: 'success', badge: 'PARKING' },
+    2: { text: '待支付', type: 'warning', badge: 'UNPAID' },
+    3: { text: '已完成', type: 'success', badge: 'COMPLETED' },
+    4: { text: '已取消', type: 'info', badge: 'CANCELLED' },
+    5: { text: '已退款', type: 'info', badge: 'REFUNDED' },
+    6: { text: '违约', type: 'danger', badge: 'VIOLATION' }
+  }
+}
+
+const CREDIT_COLORS = { EXCELLENT: '#34a853', GOOD: '#fbbc04', POOR: '#ea4335' }
+const POLLING_CONFIG = { INTERVAL: 3000, MAX_DURATION: 300000 } // 轮询间隔3秒，最长5分钟
+
+// 响应式状态
 const activeZone = ref(null)
 const showReservationDialog = ref(false)
+const showPaymentDialog = ref(false)
 const selectedSpot = ref(null)
 const reservationForm = reactive({ plate_number: '' })
 const reservationFormRef = ref(null)
@@ -225,57 +427,69 @@ const simulating = ref(false)
 const orderDurations = reactive({})
 let durationInterval = null
 
-// 键盘事件处理
+// 支付相关
+const currentPaymentOrder = ref(null)
+const selectedPaymentMethod = ref(null)
+const showQRCodeDialog = ref(false)
+const qrCodeUrl = ref('')
+const qrCodeLoading = ref(false)
+const pollingStatus = ref('')
+let pollingTimer = null
+
+// 系统配置
+const sysConfig = ref({ reservation_timeout: 30, fee_multiplier: 10.0 })
+const reservationMinutes = computed(() => sysConfig.value.reservation_timeout)
+
+// 键盘快捷键支持
 const handleKeyPress = (e) => {
-  if (e.key === 'Enter' && showReservationDialog.value) {
-    handleReservation()
-  }
+  if (e.key === 'Enter' && showReservationDialog.value) handleReservation()
 }
 
-// 监听对话框状态
 watch(showReservationDialog, (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keypress', handleKeyPress)
-  } else {
-    document.removeEventListener('keypress', handleKeyPress)
-  }
+  isOpen ? document.addEventListener('keypress', handleKeyPress) : document.removeEventListener('keypress', handleKeyPress)
 })
 
+// 计算属性
 const creditColor = computed(() => {
   const score = userStore.creditScore
-  if (score >= 90) return '#34a853'
-  if (score >= 80) return '#fbbc04'
-  return '#ea4335'
+  const { perfect = 100, good = 85, min = 70 } = sysConfig.value.credit_thresholds || {}
+  if (score >= good) return CREDIT_COLORS.EXCELLENT
+  if (score >= min) return CREDIT_COLORS.GOOD
+  return CREDIT_COLORS.POOR
 })
 
-const getSpotClass = (status) => {
-  return {
-    'spot-available': status === 0,
-    'spot-occupied': status === 1,
-    'spot-maintenance': status === 2, // 新增：维修
-    'spot-reserved': status === 3     // 变更：3为预约
-  }
-}
+// 辅助函数
+const getSpotClass = (status) => ({
+  'spot-available': status === 0,
+  'spot-occupied': status === 1,
+  'spot-maintenance': status === 2,
+  'spot-reserved': status === 3
+})
 
-const getStatusText = (status) => {
-  const map = { 0: '空闲', 1: '占用', 2: '维修', 3: '已预约' }
-  return map[status] || '未知'
-}
+const getStatusText = (status) => STATUS_MAP.SPOT_STATUS[status]?.text || '未知'
+const getOrderStatusText = (status) => STATUS_MAP.ORDER_STATUS[status]?.text || '占用中'
+const getOrderStatusType = (status) => STATUS_MAP.ORDER_STATUS[status]?.type || 'info'
 
 const getEstimatedFee = (order) => {
   const durationInSeconds = orderDurations[order.order_id] || 0
   const minutes = durationInSeconds / 60
+  const freeTime = order.free_time || 0
   
-  // 模拟后端计费逻辑：不足1小时按1小时计 (向上取整)
-  const hours = Math.ceil(minutes / 60) || 1
+  // 如果停车时长在免费时长内，费用为 0
+  if (minutes <= freeTime) {
+    return 0
+  }
+  
+  // 模拟后端计费逻辑：超过免费时长后，不足1小时按1小时计 (向上取整)
+  const hours = Math.ceil(minutes / 60)
   
   const feeRate = order.fee_rate || 5.0
-  const multiplier = 10.0 // 对应 config.py 中的 FEE_MULTIPLIER
+  const multiplier = sysConfig.value.fee_multiplier || 1.0 // 修正默认倍率为 1.0
   
-  const discounts = { 0: 1.0, 1: 0.9, 2: 0.8 }
-  const discount = discounts[order.user_role] || 1.0
+  // 从动态配置中获取折扣，如果不存在则默认为 1.0 (无折扣)
+  const discount = sysConfig.value.roles?.[order.user_role.toString()] ?? 1.0
   
-  return hours * feeRate * discount * multiplier
+  return (hours * feeRate * discount * multiplier).toFixed(2)
 }
 
 const handleZoneChange = async (zoneId) => {
@@ -283,42 +497,42 @@ const handleZoneChange = async (zoneId) => {
 }
 
 const handleSpotClick = (spot) => {
-  // 如果点击的是正在维修的车位
-  if (spot.status === 2) {
-    ElMessage.warning('该车位正在维护中，暂停使用')
-    return
-  }
-
-  // 如果用户有待支付订单，禁止新预约并提示
-  if (orderStore.unpaidOrder) {
-    ElMessage.error('您有未支付订单，请先完成支付')
-    return
-  }
-
-  // 如果点击的是自己的预约车位 (status 3)
+  // 维修中的车位直接提示
+  if (spot.status === 2) return ElMessage.warning('该车位正在维护中，暂停使用')
+  
+  // 违约和信用分检查
+  if (orderStore.hasViolation) return ElMessage.error('您有违约记录未处理，请先处理违约账单')
+  const passScore = sysConfig.value.credit_thresholds?.min || 70
+  if (userStore.creditScore < passScore) return ElMessage.error(`信用分不足 ${passScore}，无法预约车位`)
+  
+  // 重复预约拦截
+  if (orderStore.activeOrder) return ElMessage.info('您已有预约或正在进行的订单，请先处理后再预约')
+  
+  // 点击自己的预约车位时提示
   const isMyReserved = spot.status === 3 && userStore.cars.some(c => c.plate_number === spot.current_plate)
   if (isMyReserved) {
     selectedSpot.value = spot
-    ElMessage.info({
-      message: '这是您的预约车位，可在下方进行操作',
-      duration: 2000
-    })
-    return
-  }
-
-  if (spot.status !== 0) {
-    ElMessage.warning('该车位目前不可用')
-    return
+    return ElMessage.info({ message: '这是您的预约车位，可在下方进行操作', duration: 2000 })
   }
   
+  // 车位可用性检查
+  if (spot.status !== 0) return ElMessage.warning('该车位目前不可用')
   if (userStore.cars.length === 0) {
     ElMessage.warning('请先绑定车辆')
-    router.push('/profile')
-    return
+    return router.push('/profile')
   }
   
   selectedSpot.value = spot
-  reservationForm.plate_number = userStore.cars[0]?.plate_number || ''
+  
+  // 智能选择空闲车辆
+  const availableCar = userStore.cars.find(car => orderStore.getCarStatus(car.plate_number) === null)
+  if (availableCar) {
+    reservationForm.plate_number = availableCar.plate_number
+  } else {
+    reservationForm.plate_number = userStore.cars[0]?.plate_number || ''
+    ElMessage.warning('您的所有车辆都有进行中的订单，请先处理后再预约')
+  }
+  
   showReservationDialog.value = true
 }
 
@@ -336,18 +550,140 @@ const handleCancelReservation = async (order) => {
 }
 
 const handlePayment = async (order) => {
-  const targetOrder = order || orderStore.unpaidOrder
+  const targetOrder = order || orderStore.unpaidOrders[0]
   if (!targetOrder) return
+
+  // 设置当前支付订单并打开支付对话框
+  currentPaymentOrder.value = targetOrder
+  selectedPaymentMethod.value = null // 重置选择
+  
+  // 如果余额足够，默认选中余额支付
+  if (userStore.balance >= targetOrder.total_fee) {
+    selectedPaymentMethod.value = 0
+  }
+  
+  showPaymentDialog.value = true
+}
+
+// 选择支付方式
+const selectPaymentMethod = (method) => {
+  // 如果是余额支付且余额不足，不允许选择
+  if (method === 0 && userStore.balance < (currentPaymentOrder.value?.total_fee || 0)) {
+    return
+  }
+  selectedPaymentMethod.value = method
+}
+
+// 确认支付
+const confirmPayment = async () => {
+  if (selectedPaymentMethod.value === null) {
+    ElMessage.warning('请选择支付方式')
+    return
+  }
 
   paying.value = true
   try {
-    await orderStore.payOrder(targetOrder.order_id)
-    ElMessage.success('支付成功')
-    await userStore.fetchProfile() // 更新余额
+    if (selectedPaymentMethod.value === 0) {
+      // 余额支付
+      await orderStore.payOrder(currentPaymentOrder.value.order_id, 0)
+      ElMessage.success('支付成功')
+      showPaymentDialog.value = false
+      await userStore.fetchProfile() // 刷新用户余额
+    } else if (selectedPaymentMethod.value === 2) {
+      // 支付宝支付
+      await handleAlipayPayment()
+    }
   } catch (error) {
     console.error('Payment failed:', error)
   } finally {
     paying.value = false
+  }
+}
+
+// 处理支付宝支付
+const handleAlipayPayment = async () => {
+  try {
+    qrCodeLoading.value = true
+    showPaymentDialog.value = false
+    showQRCodeDialog.value = true
+    pollingStatus.value = 'waiting'
+    
+    // 调用后端生成二维码
+    const res = await createAlipayQRCode({ order_id: currentPaymentOrder.value.order_id })
+    
+    if (res.success) {
+      qrCodeUrl.value = res.data.qr_code
+      qrCodeLoading.value = false
+      
+      // 开始轮询支付状态
+      startPolling(res.data.out_trade_no)
+    } else {
+      throw new Error(res.message || '生成二维码失败')
+    }
+  } catch (error) {
+    qrCodeLoading.value = false
+    ElMessage.error(error.message || '生成支付二维码失败')
+    showQRCodeDialog.value = false
+  }
+}
+
+// 开始轮询支付状态
+const startPolling = (outTradeNo) => {
+  const startTime = Date.now()
+  
+  // 定义轮询函数
+  const poll = async () => {
+    // 如果已经停止轮询，直接返回
+    if (!pollingStatus.value) return
+    
+    // 检查是否超时（5分钟）
+    if (Date.now() - startTime > POLLING_CONFIG.MAX_DURATION) {
+      stopPolling()
+      ElMessage.warning('支付超时，请重新发起支付')
+      return
+    }
+    
+    try {
+      const res = await queryAlipayStatus({ out_trade_no: outTradeNo })
+      
+      if (res.success && res.data.trade_status === 'TRADE_SUCCESS') {
+        // 支付成功
+        stopPolling()
+        pollingStatus.value = 'success'
+        ElMessage.success('支付成功！')
+        
+        // 延迟关闭对话框，让用户看到成功提示
+        setTimeout(async () => {
+          showQRCodeDialog.value = false
+          await orderStore.fetchOrders()
+          await userStore.fetchProfile()
+        }, 1500)
+        return // 结束递归
+      }
+    } catch (error) {
+      // 忽略超时错误，继续轮询
+      console.log('查询支付状态失败（可能网络波动），继续轮询...', error)
+    }
+    
+    // 继续下一次轮询
+    pollingTimer = setTimeout(poll, POLLING_CONFIG.INTERVAL)
+  }
+  
+  // 开始第一次轮询
+  poll()
+}
+
+// 停止轮询
+const stopPolling = () => {
+  if (pollingTimer) {
+    clearTimeout(pollingTimer) // 注意这里改为clearTimeout
+    pollingTimer = null
+  }
+  // 如果是支付成功状态，不要立即清空，让用户看到成功提示
+  if (pollingStatus.value !== 'success') {
+    qrCodeUrl.value = ''
+    qrCodeLoading.value = false
+    pollingStatus.value = ''
   }
 }
 
@@ -417,7 +753,8 @@ const updateOrderDuration = () => {
     if (order.in_time) {
       const inTimeStr = order.in_time.endsWith('Z') ? order.in_time : order.in_time + 'Z'
       const inTime = new Date(inTimeStr)
-      orderDurations[order.order_id] = Math.floor((now - inTime) / 1000)
+      // 使用 Math.max(0, ...) 防止服务器时间微领先于本地时间时显示负数
+      orderDurations[order.order_id] = Math.max(0, Math.floor((now - inTime) / 1000))
     }
   })
 }
@@ -428,6 +765,16 @@ onMounted(async () => {
   
   // Fetch user profile and cars
   await userStore.fetchProfile()
+  
+  // Fetch system config (for dynamic timeouts)
+  try {
+    const configRes = await getAdminConfig()
+    if (configRes.success) {
+      sysConfig.value = configRes.data
+    }
+  } catch (err) {
+    console.error('Failed to load system config')
+  }
   
   // Fetch zones and spots
   await parkingStore.fetchZones()
@@ -818,6 +1165,28 @@ onUnmounted(() => {
   color: #ef4444 !important;
 }
 
+/* 列表动画 - 解决位移抖动和重排感 */
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.5s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateY(30px) scale(0.9);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+/* 关键：处理重排时的平滑移动 */
+.list-move {
+  transition: transform 0.6s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+
 .order-pending { border-left: 5px solid #3b82f6; }
 .order-parking { border-left: 5px solid #10b981; }
 .order-warning { border-left: 5px solid #ef4444; }
@@ -869,6 +1238,13 @@ onUnmounted(() => {
 .car-option {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.car-main-info {
+  display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -890,5 +1266,302 @@ onUnmounted(() => {
 
 .mr-1 {
   margin-right: 4px;
+}
+
+/* 支付对话框样式 */
+.payment-dialog-content {
+  padding: 8px 0;
+}
+
+.order-summary-card {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  color: white;
+  box-shadow: 0 8px 24px rgba(102, 126, 234, 0.3);
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  opacity: 0.95;
+}
+
+.summary-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.detail-row.total {
+  border-bottom: none;
+  padding-top: 16px;
+  margin-top: 8px;
+  border-top: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.detail-row .label {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.detail-row .value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.detail-row.total .label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.detail-row.total .value.amount {
+  font-size: 28px;
+  font-weight: 900;
+  color: #fbbf24;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.payment-methods {
+  margin-top: 8px;
+}
+
+.method-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+.payment-method-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 2px solid #e5e7eb;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: white;
+}
+
+.payment-method-card:hover:not(.disabled) {
+  border-color: #10b981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+  transform: translateY(-2px);
+}
+
+.payment-method-card.selected {
+  border-color: #10b981;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.2);
+}
+
+.payment-method-card.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f9fafb;
+}
+
+.method-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.balance-icon {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  color: white;
+}
+
+.alipay-icon {
+  background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+}
+
+.method-info {
+  flex: 1;
+}
+
+.method-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.method-desc {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.method-desc .insufficient {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.method-check {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 支付宝二维码对话框样式 */
+.qrcode-dialog-content {
+  padding: 20px 0;
+}
+
+.qrcode-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.qrcode-title {
+  flex: 1;
+}
+
+.title-main {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 4px;
+}
+
+.title-sub {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.qrcode-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 260px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 16px;
+  padding: 30px;
+  margin-bottom: 20px;
+}
+
+.qrcode-loading,
+.qrcode-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  color: #64748b;
+}
+
+.qrcode-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.qrcode-image {
+  width: 200px;
+  height: 200px;
+  border: 4px solid white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.qrcode-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+}
+
+.payment-status {
+  min-height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.status-waiting,
+.status-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.status-waiting {
+  color: #3b82f6;
+}
+
+.status-success {
+  color: #10b981;
+}
+
+/* 支付成功展示样式 */
+.qrcode-success-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 240px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.success-icon-animate {
+  margin-bottom: 20px;
+  animation: scaleIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.success-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #10b981;
+  margin-bottom: 8px;
+}
+
+.success-sub {
+  font-size: 14px;
+  color: #6b7280;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 </style>

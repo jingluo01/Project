@@ -52,7 +52,7 @@
         </el-form>
         
         <div class="login-footer">
-          <router-link to="/register" class="link">访客入口</router-link>
+          <router-link to="/register" class="link">注册</router-link>
           <router-link to="/register" class="link">忘记密码</router-link>
         </div>
       </div>
@@ -61,13 +61,15 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
+import { initWebSocket, closeWebSocket } from '@/utils/websocket'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
 const loginFormRef = ref(null)
@@ -94,6 +96,10 @@ const handleLogin = async () => {
       await userStore.login(loginForm)
       ElMessage.success('登录成功')
       
+      // 重新初始化 WebSocket，确保带着新 Token 连接并加入私有频道
+      closeWebSocket()
+      initWebSocket()
+      
       // Redirect based on role
       if (userStore.isAdmin) {
         router.push('/admin/dashboard')
@@ -107,6 +113,15 @@ const handleLogin = async () => {
     }
   })
 }
+onMounted(() => {
+  if (route.query.reason === 'kickout') {
+    ElMessage.warning({
+      message: '您的账号在另一台设备登录，系统已自动为您下线保护',
+      duration: 5000,
+      showClose: true
+    })
+  }
+})
 </script>
 
 <style scoped>

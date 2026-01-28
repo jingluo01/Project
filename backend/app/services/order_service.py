@@ -16,25 +16,29 @@ class OrderService:
         if not spot_id or not plate_number:
             return {'success': False, 'message': '车位ID和车牌号不能为空'}, 400
         
-        # 1. 信用分检查
-        if user.credit_score < current_app.config['MIN_CREDIT_SCORE']:
-            return {'success': False, 'message': f'信用分不足{current_app.config["MIN_CREDIT_SCORE"]}，无法预约'}, 403
+        # 1. 信用分检查 (动态读取数据库配置)
+        from app.models.config import SysConfig
+        min_score = int(SysConfig.get_value('MIN_CREDIT_SCORE', current_app.config.get('MIN_CREDIT_SCORE', 70)))
         
-        # 2. 欠费/违约检查
-        unpaid_or_violated = ParkingOrder.query.filter_by(user_id=user.user_id).filter(
-            ParkingOrder.status.in_([2, 6])
+        if user.credit_score < min_score:
+            return {'success': False, 'message': f'您的信用分({user.credit_score})低于及格线({min_score})，禁止预约'}, 403
+        
+        # 2. 违约检查 (全局检查：只要有违约记录未处理，无论哪辆车都不能预约)
+        violation_order = ParkingOrder.query.filter(
+            ParkingOrder.user_id == user.user_id,
+            ParkingOrder.status == 6
         ).first()
-        if unpaid_or_violated:
-            msg = '您有待支付订单，先支付' if unpaid_or_violated.status == 2 else '您有违约记录，请先处理'
-            return {'success': False, 'message': msg}, 403
-
-        # 3. 车辆重复检查
-        active_car_order = ParkingOrder.query.filter_by(plate_number=plate_number).filter(
-            ParkingOrder.status.in_([0, 1])
+        if violation_order:
+            return {'success': False, 'message': '您有违约记录未处理，请联系管理员或处理欠费以恢复信用'}, 403
+ 
+        # 3. 车辆状态检查 (针对当前车牌：预约中、停车中、待支付 状态下不能再次预约)
+        active_car_order = ParkingOrder.query.filter(
+            ParkingOrder.plate_number == plate_number,
+            ParkingOrder.status.in_([0, 1, 2])
         ).first()
         if active_car_order:
-            status_msg = {0: '该车辆已有预约中的订单', 1: '该车辆当前正在停车中'}
-            return {'success': False, 'message': status_msg.get(active_car_order.status, '该车辆已有进行中的订单')}, 403
+            status_desc = {0: '预约中', 1: '停车中', 2: '待支付'}
+            return {'success': False, 'message': f'该车辆({plate_number})当前处于{status_desc.get(active_car_order.status, "活跃")}状态，不能重复预约'}, 403
         
         # 4. 车辆绑定验证
         car = Car.query.filter_by(plate_number=plate_number, user_id=user.user_id).first()
@@ -101,15 +105,20 @@ class OrderService:
     @staticmethod
     @handle_service_exception(message_prefix="取消失败")
     def cancel_order(user, order_id):
-        """取消预约业务逻辑"""
+        """取消预约业务逻辑 (支持管理员强制操作)"""
         if not order_id:
             return {'success': False, 'message': '订单ID不能为空'}, 400
         
-        order = ParkingOrder.query.filter_by(order_id=order_id, user_id=user.user_id).first()
+        # 管理员权限：可以查询跨用户的订单
+        if user.role == 3:
+            order = ParkingOrder.query.get(order_id)
+        else:
+            order = ParkingOrder.query.filter_by(order_id=order_id, user_id=user.user_id).first()
+            
         if not order:
             return {'success': False, 'message': '订单不存在'}, 404
         if order.status != 0:
-            return {'success': False, 'message': '该订单无法取消'}, 400
+            return {'success': False, 'message': '该订单当前状态无法取消'}, 400
         
         order.status = 4
         spot = ParkingSpot.query.get(order.spot_id)
@@ -122,8 +131,8 @@ class OrderService:
         return {'success': True, 'message': '取消成功', 'data': order.to_dict()}, 200
 
     @staticmethod
-    def search_orders(user, status=None, page=1, per_page=20):
-        """统一订单查询逻辑 (优化后的列查询)"""
+    def search_orders(user, status=None, page=1, per_page=20, start_date=None, end_date=None, query_keyword=None):
+        """统一订单查询逻辑 (支持多维查询过滤)"""
         # 仅选择必要的列，显著减少数据传输量
         query = db.session.query(
             ParkingOrder, 
@@ -143,11 +152,29 @@ class OrderService:
             ParkingZone, ParkingSpot.zone_id == ParkingZone.zone_id
         )
         
+        # 权限隔离
         if user.role != 3: 
             query = query.filter(ParkingOrder.user_id == user.user_id)
         
+        # 状态过滤
         if status is not None:
             query = query.filter(ParkingOrder.status == status)
+            
+        # 日期范围过滤
+        if start_date:
+            query = query.filter(ParkingOrder.created_at >= start_date)
+        if end_date:
+            query = query.filter(ParkingOrder.created_at <= end_date)
+            
+        # 关键词搜索 (订单号、车牌、用户名、学号)
+        if query_keyword:
+            k = f"%{query_keyword}%"
+            query = query.filter(db.or_(
+                ParkingOrder.order_no.like(k),
+                ParkingOrder.plate_number.like(k),
+                SysUser.username.like(k),
+                SysUser.user_no.like(k)
+            ))
         
         # 权重排序：预约(0)/进行中(1)最优先，待支付(2)/违约(6)其次，已完成等历史最后
         from sqlalchemy import case
@@ -251,7 +278,13 @@ class OrderService:
             owner = SysUser.query.get(order.user_id)
             if owner:
                 owner.balance += order.total_fee
+        elif order.pay_way == 2:
+            from app.services.alipay_service import AlipayService
+            # 调用支付宝原路退款接口
+            result, code = AlipayService.refund_payment(order.order_no, order.total_fee)
+            if not result.get('success'):
+                return result, code
                 
         order.status = 5
         db.session.commit()
-        return {'success': True, 'message': '退款成功', 'data': order.to_dict()}, 200
+        return {'success': True, 'message': '已按原支付方式退款成功', 'data': order.to_dict()}, 200

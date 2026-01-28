@@ -61,6 +61,11 @@ const routes = [
                 path: 'orders',
                 name: 'OrderManagement',
                 component: () => import('@/views/admin/OrderManagement.vue')
+            },
+            {
+                path: 'settings',
+                name: 'SystemSettings',
+                component: () => import('@/views/admin/SystemSettings.vue')
             }
         ]
     }

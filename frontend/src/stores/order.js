@@ -20,19 +20,29 @@ export const useOrderStore = defineStore('order', {
             return state.orders.filter(o => o.status === 0 || o.status === 1)
         },
 
-        // 待支付的订单（正常出场待支付或超时违约）
-        unpaidOrder: (state) => {
-            return state.orders.find(o => o.status === 2 || o.status === 6)
-        },
-
-        // 所有待支付订单列表 (支持多个账单)
+        // 待支付的订单（仅包含状态2：待结算）
         unpaidOrders: (state) => {
-            return state.orders.filter(o => o.status === 2 || o.status === 6)
+            return state.orders.filter(o => o.status === 2)
         },
 
-        // 底部展示的所有订单 (活跃+待支付)，保持稳定排序
+        // 是否有违约记录 (状态6) - 全局拦截
+        hasViolation: (state) => {
+            return state.orders.some(o => o.status === 6)
+        },
+
+        // 底部展示的所有订单 (活跃+待支付)，保持稳定排序（正序：即按创建先后顺序排，左旧右新）
         visibleOrders: (state) => {
-            return state.orders.filter(o => [0, 1, 2, 6].includes(o.status))
+            return [...state.orders]
+                .filter(o => [0, 1, 2, 6].includes(o.status))
+                .sort((a, b) => a.order_id - b.order_id)
+        },
+
+        // 获取指定车牌的当前订单状态
+        getCarStatus: (state) => (plateNumber) => {
+            const order = state.orders.find(o =>
+                o.plate_number === plateNumber && [0, 1, 2, 6].includes(o.status)
+            )
+            return order ? order.status : null
         },
 
         // 所有订单列表
@@ -43,7 +53,7 @@ export const useOrderStore = defineStore('order', {
         async fetchOrders(status = null, page = 1, perPage = 100) {
             this.loading = true
             try {
-                const res = await getOrders(status, page, perPage)
+                const res = await getOrders({ status, page, perPage })
                 // 后端现在返回分页结构: { success: true, data: { orders: [], total: ... } }
                 this.orders = res.data.orders || []
                 return res

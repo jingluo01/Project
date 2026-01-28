@@ -24,6 +24,7 @@ class ParkingOrder(db.Model):
     # 费用
     total_fee = db.Column(db.Numeric(10, 2), default=0.00, comment='总费用')
     pay_way = db.Column(db.Integer, comment='0-余额, 1-微信, 2-支付宝')
+    trade_no = db.Column(db.String(64), comment='第三方交易号')
     
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

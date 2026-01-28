@@ -12,8 +12,17 @@ export const cancelOrder = (data) => {
     return request.post('/order/cancel', data)
 }
 
-export const getOrders = (status, page, perPage) => {
-    return request.get('/order/list', { params: { status, page, per_page: perPage } })
+export const getOrders = (params) => {
+    return request.get('/order/list', {
+        params: {
+            status: params.status,
+            page: params.page,
+            per_page: params.perPage,
+            start_date: params.startDate,
+            end_date: params.endDate,
+            query: params.query
+        }
+    })
 }
 
 export const refundOrder = (data) => {

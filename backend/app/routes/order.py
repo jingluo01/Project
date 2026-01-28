@@ -43,9 +43,20 @@ def get_orders(current_user):
     status = request.args.get('status', type=int)
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    query_keyword = request.args.get('query')
     
     # 统一调用 search_orders，Service 层会根据 current_user 自动做权限隔离
-    result, status_code = OrderService.search_orders(current_user, status, page, per_page)
+    result, status_code = OrderService.search_orders(
+        current_user, 
+        status, 
+        page, 
+        per_page,
+        start_date=start_date,
+        end_date=end_date,
+        query_keyword=query_keyword
+    )
     return jsonify(result), status_code
 
 @order_bp.route('/refund', methods=['POST'])

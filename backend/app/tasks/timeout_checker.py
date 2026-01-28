@@ -54,21 +54,21 @@ def start_scheduler(app):
     
     scheduler = BackgroundScheduler()
     
-    # 待支付超时检查 (加速测试，每分钟检查一次)
+    # 待支付超时检查 (正式频率，每小时检查一次)
     scheduler.add_job(
         func=lambda: check_timeout_orders(app),
         trigger='interval',
-        minutes=1,
+        hours=1,
         id='check_payment_timeout'
     )
     
-    # 预约超时检查 (每分钟)
+    # 预约超时检查 (每小时)
     scheduler.add_job(
         func=lambda: check_reservation_timeout(app),
         trigger='interval',
-        minutes=1,
+        hours=1,
         id='check_reservation_timeout'
     )
     
     scheduler.start()
-    print('定时任务已启动 (测试模式: 1分钟频率，已接入 Service 指挥)')
+    print('定时任务已启动 (正式模式: 1小时频率)')

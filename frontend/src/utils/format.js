@@ -9,8 +9,10 @@ export const formatCurrency = (amount) => {
 }
 
 export const formatDuration = (seconds) => {
-    const hours = Math.floor(seconds / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
+    // 确保秒数不为负数（防止服务器/本地时钟微小偏差导致显示-1分钟）
+    const safeSeconds = Math.max(0, seconds)
+    const hours = Math.floor(safeSeconds / 3600)
+    const minutes = Math.floor((safeSeconds % 3600) / 60)
 
     if (hours > 0) {
         return `${hours}小时${minutes}分钟`

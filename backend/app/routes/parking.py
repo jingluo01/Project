@@ -5,13 +5,15 @@ from app.services.parking_service import ParkingService
 parking_bp = Blueprint('parking', __name__)
 
 @parking_bp.route('/zones', methods=['GET'])
-def get_zones():
+@token_required
+def get_zones(current_user):
     """获取所有停车区域"""
     result, status_code = ParkingService.get_zones()
     return jsonify(result), status_code
 
 @parking_bp.route('/spots', methods=['GET'])
-def get_spots():
+@token_required
+def get_spots(current_user):
     """获取车位实时状态"""
     zone_id = request.args.get('zone_id', type=int)
     result, status_code = ParkingService.get_spots(zone_id)
@@ -39,9 +41,29 @@ def vehicle_exit():
 
 def register_socketio_events(socketio_instance):
     """注册WebSocket事件"""
+    from flask_socketio import join_room, leave_room
+    from app.utils.auth_utils import decode_token
+    from flask import request
+
     @socketio_instance.on('connect')
-    def handle_connect():
-        print('Client connected')
+    def handle_connect(auth):
+        token = None
+        # 支持从 auth 参数或 query 参数获取 token
+        if auth and 'token' in auth:
+            token = auth['token']
+        elif request.args.get('token'):
+            token = request.args.get('token')
+            
+        if token:
+            payload = decode_token(token)
+            if payload:
+                user_id = payload.get('user_id')
+                join_room(f"user_{user_id}")
+                print(f'User {user_id} connected and joined private room')
+                return True
+        
+        print('Anonymous client connected')
+        return True
     
     @socketio_instance.on('disconnect')
     def handle_disconnect():

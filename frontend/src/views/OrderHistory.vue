@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useOrderStore } from '@/stores/order'
 import { payOrder, cancelOrder } from '@/api/order'
@@ -69,6 +69,11 @@ import { formatDate, formatCurrency, getOrderStatusText, getOrderStatusType } fr
 
 const router = useRouter()
 const orderStore = useOrderStore()
+const selectedStatus = ref('')
+
+const handleStatusChange = (val) => {
+  orderStore.fetchOrders(val !== '' ? val : null)
+}
 
 const handlePay = async (order) => {
   try {
