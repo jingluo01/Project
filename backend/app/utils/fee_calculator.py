@@ -27,9 +27,9 @@ def calculate_parking_fee(in_time, out_time, fee_rate, free_time_minutes, user_r
     duration = (out_time - in_time).total_seconds() / 60
     
     # --- 核心：免费时长逻辑 ---
-    # 测试模式：暂时注释掉免费时长判断，确保每次都能产生费用测试支付
-    # if duration <= free_time_minutes:
-    #     return Decimal('0.00')
+    # 核心：免费时长逻辑
+    if duration <= free_time_minutes:
+        return Decimal('0.00')
     
     # 计费规则：超过免费时长后，按小时计费，不足1小时按1小时计 (向上取整)
     chargeable_hours = math.ceil(duration / 60)

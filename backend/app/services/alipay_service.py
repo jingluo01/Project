@@ -7,6 +7,34 @@ from datetime import datetime
 from app.models.order import ParkingOrder
 from app.extensions import db
 
+class MockAlipay:
+    """Mock Alipay service for development"""
+    def api_alipay_trade_precreate(self, **kwargs):
+        from datetime import datetime
+        return {
+            'code': '10000',
+            'msg': 'Success',
+            'qr_code': 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=MockPayment', # Generate a real QR code image for visual effect
+            'out_trade_no': kwargs.get('out_trade_no')
+        }
+    
+    def api_alipay_trade_query(self, **kwargs):
+        from datetime import datetime
+        return {
+            'code': '10000',
+            'trade_status': 'TRADE_SUCCESS',
+            'trade_no': 'MOCK_' + datetime.now().strftime('%Y%m%d%H%M%S'),
+            'total_amount': '0.01'
+        }
+        
+    def api_alipay_trade_refund(self, **kwargs):
+        from datetime import datetime
+        return {
+            'code': '10000',
+            'refund_fee': kwargs.get('refund_amount'),
+            'gmt_refund_pay': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+
 class AlipayService:
     """支付宝支付服务类"""
     
@@ -37,22 +65,34 @@ class AlipayService:
         """获取支付宝实例（高性能单例）"""
         if not cls._alipay_instance:
             try:
-                # 预读配置，减少耗时
-                appid = current_app.config['ALIPAY_APPID']
-                p_key = cls._format_key(current_app.config['ALIPAY_PRIVATE_KEY'], 'PRIVATE')
-                pub_key = cls._format_key(current_app.config['ALIPAY_PUBLIC_KEY'], 'PUBLIC')
+                # 预读配置
+                appid = current_app.config.get('ALIPAY_APPID')
+                p_key = current_app.config.get('ALIPAY_PRIVATE_KEY')
+                pub_key = current_app.config.get('ALIPAY_PUBLIC_KEY')
+                
+                # Check directly for missing config to fallback early
+                if not appid or not p_key or not pub_key:
+                    raise Exception("Missing Alipay Configuration")
+
+                p_key_fmt = cls._format_key(p_key, 'PRIVATE')
+                pub_key_fmt = cls._format_key(pub_key, 'PUBLIC')
                 
                 cls._alipay_instance = AliPay(
                     appid=appid,
                     app_notify_url=None,
-                    app_private_key_string=p_key,
-                    alipay_public_key_string=pub_key,
+                    app_private_key_string=p_key_fmt,
+                    alipay_public_key_string=pub_key_fmt,
                     sign_type="RSA2",
                     debug=True
                 )
             except Exception as e:
-                current_app.logger.error(f"支付宝实例初始化失败: {str(e)}")
-                raise e
+                # In development, fallback to Mock if config is invalid
+                if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
+                    current_app.logger.warning(f"支付宝初始化失败 ('{str(e)}'). 开发环境已切换为 Mock 模式。")
+                    cls._alipay_instance = MockAlipay()
+                else:
+                    current_app.logger.error(f"支付宝实例初始化失败: {str(e)}")
+                    raise e
         return cls._alipay_instance
     
     @classmethod
@@ -144,6 +184,7 @@ class AlipayService:
             # 获取支付宝实例
             alipay = cls.get_alipay()
             
+            # 查询交易状态
             # 查询交易状态
             result = alipay.api_alipay_trade_query(out_trade_no=out_trade_no)
             

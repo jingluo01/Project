@@ -45,7 +45,7 @@ class Config:
     MIN_CREDIT_SCORE = 70  # 最低信用分要求 (及格线)
     GOOD_CREDIT_SCORE = 85 # 良好信用分要求
     PERFECT_CREDIT_SCORE = 100  # 完美信用分
-    FEE_MULTIPLIER = 10.0  # 费用倍率因子（开发测试用）
+    FEE_MULTIPLIER = 1.0  # 费用倍率因子 (恢复正常计费)
     RESERVATION_TIMEOUT_MINUTES = 180 # 预约超时时间(分钟)，设为3小时
     VIOLATION_FEE = 5.00 # 预约违约金(元)
     
@@ -56,6 +56,7 @@ class Config:
         2: 0.8,   # 教职工，8折
     }
     
+    # Alipay Configuration
     # Alipay Configuration
     ALIPAY_APPID = os.getenv('ALIPAY_APPID', '')
     ALIPAY_PRIVATE_KEY = os.getenv('ALIPAY_PRIVATE_KEY', '')
