@@ -1,12 +1,12 @@
 # 使用官方 Python 运行时作为父镜像
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # 设置工作目录
 WORKDIR /app
 
 # 设置环境变量
 ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1 
+ENV PYTHONUNBUFFERED 1
 
 # === 新增：替换为阿里云源，加速下载 ===
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources

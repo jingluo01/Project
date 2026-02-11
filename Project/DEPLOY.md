@@ -31,12 +31,12 @@ cd /opt/parking
 执行一键启动命令（这会自动构建镜像并启动所有服务）：
 
 ```bash
-docker compose up -d --build
+docker-compose up -d --build
 ```
 
 查看服务状态：
 ```bash
-docker compose ps
+docker-compose ps
 ```
 你应该能看到 `frontend`, `backend`, `mysql`, `redis` 四个容器都在 Running 状态。
 
@@ -46,9 +46,7 @@ docker compose ps
 
 **执行数据初始化脚本：**
 ```bash
-# 使用 run 命令即使后端在重启中也能执行
-docker compose run --rm backend python init_school_db.py
-docker compose run --rm backend python init_db.py
+docker-compose exec backend python init_db.py
 ```
 
 看到 "Database initialized successfully" 即表示成功。
@@ -68,7 +66,7 @@ docker compose run --rm backend python init_db.py
 ### 查看后端日志 (Flask/Gunicorn)
 ```bash
 # 查看最后200行并持续刷新
-docker compose logs -f --tail=200 backend
+docker-compose logs -f --tail=200 backend
 ```
 如果看到报错，通常能在这里找到 Python 的 Traceback。
 
@@ -76,13 +74,13 @@ docker compose logs -f --tail=200 backend
 前端不仅是页面，还包含了 Nginx 作为反向代理的访问日志。
 ```bash
 # 查看访问日志
-docker compose logs -f frontend
+docker-compose logs -f frontend
 ```
 如果你发现接口报 404 或 502 Bad Gateway，请重点检查这里的日志。
 
 ### 查看数据库日志
 ```bash
-docker compose logs -f mysql
+docker-compose logs -f mysql
 ```
 
 ## 常见问题
@@ -102,44 +100,5 @@ docker-compose logs -f backend
 数据库文件存放在 Docker Volume 中，即使删除容器数据也不会丢失。
 如需彻底重置，请运行：
 ```bash
-docker compose down -v
-```
-
-## 9. 逆向迁移指南 (从服务器回拉到本地)
-
-如果你想把服务器上运行的**最新数据**或**修改过的代码**拉回本地电脑，请按以下步骤操作。
-
-### 1. 拉取代码和文件 (SCP)
-如果你在服务器上直接修改了代码，或者想下载上传的图片/日志：
-
-在**本地电脑终端**执行 (将 `/opt/parking` 替换为你服务器上的路径)：
-```bash
-# 将服务器的 /opt/parking 整个目录下载到本地的 server_backup 文件夹
-scp -r root@47.110.81.78:/opt/parking ./server_backup
-```
-
-### 2. 拉取数据库数据
-如果你想分析服务器产生的真实业务数据：
-
-**第一步：在服务器上导出数据**
-登录服务器终端，进入项目目录执行：
-```bash
-# 导出 SQL 文件
-docker compose exec mysql mysqldump -u root -p123456 campus_parking > campus_parking_prod.sql
-docker compose exec mysql mysqldump -u root -p123456 school_official > school_official_prod.sql
-```
-
-**第二步：下载 SQL 文件到本地**
-在**本地电脑终端**执行：
-```bash
-scp root@47.110.81.78:/opt/parking/*_prod.sql ./
-```
-
-**第三步：导入本地数据库**
-```bash
-# 假设你本地用 Docker 跑数据库
-cat campus_parking_prod.sql | docker compose exec -T mysql mysql -u root -p123456 campus_parking
-
-# 或者如果你本地是直接安装的 MySQL (如 python run.py 用户)
-# mysql -u root -p123456 campus_parking < campus_parking_prod.sql
+docker-compose down -v
 ```
