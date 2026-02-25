@@ -23,6 +23,14 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False
     
+    # 数据库连接池调优 (应对高并发)
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_size': int(os.getenv('DB_POOL_SIZE', 20)),          # 连接池大小
+        'max_overflow': int(os.getenv('DB_MAX_OVERFLOW', 10)),    # 允许超出的最大连接数
+        'pool_recycle': int(os.getenv('DB_POOL_RECYCLE', 3600)),  # 连接回收时间(秒)，防止连接被数据库主动关闭
+        'pool_timeout': int(os.getenv('DB_POOL_TIMEOUT', 30))     # 获取连接超时时间
+    }
+    
     # Redis
     REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
     

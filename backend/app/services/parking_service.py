@@ -21,13 +21,49 @@ class ParkingService:
 
     @staticmethod
     def get_zones():
-        """获取所有停车区域逻辑"""
+        """获取所有停车区域逻辑 (带 Redis 缓存)"""
+        from app.extensions import redis_client
+        import json
+        
+        cache_key = 'parking:zones:all'
+        # 1. 尝试从 Redis 获取缓存
+        if redis_client:
+            try:
+                cached_data = redis_client.get(cache_key)
+                if cached_data:
+                    return {'success': True, 'data': json.loads(cached_data)}, 200
+            except:
+                pass # Redis异常时降级到数据库
+
+        # 2. 从数据库查询
         zones = ParkingZone.query.all()
-        return {'success': True, 'data': [zone.to_dict() for zone in zones]}, 200
+        data = [zone.to_dict() for zone in zones]
+        
+        # 3. 写入缓存 (过期时间 1 小时)
+        if redis_client:
+            try:
+                redis_client.setex(cache_key, 3600, json.dumps(data))
+            except:
+                pass
+                
+        return {'success': True, 'data': data}, 200
 
     @staticmethod
     def get_spots(zone_id=None):
-        """获取车位实时状态业务逻辑"""
+        """获取车位实时状态业务逻辑 (增加高并发短缓存保护)"""
+        from app.extensions import redis_client
+        import json
+        
+        cache_key = f'parking:spots:{zone_id if zone_id else "all"}'
+        # 短期内大量相同请求直接返回缓存 (防雪崩，3秒短缓存)
+        if redis_client:
+            try:
+                cached_data = redis_client.get(cache_key)
+                if cached_data:
+                    return {'success': True, 'data': json.loads(cached_data)}, 200
+            except:
+                pass
+
         if zone_id:
             spots = ParkingSpot.query.filter_by(zone_id=zone_id).all()
         else:
@@ -48,6 +84,13 @@ class ParkingService:
                 spot_dict['status'] = 3
                 spot_dict['current_plate'] = reserved_spot_map[spot.spot_id]
             spots_data.append(spot_dict)
+            
+        # 设置短生命周期缓存
+        if redis_client:
+            try:
+                redis_client.setex(cache_key, 3, json.dumps(spots_data))
+            except:
+                pass
             
         return {'success': True, 'data': spots_data}, 200
 
@@ -155,6 +198,15 @@ class ParkingService:
             if 'free_time' in data: zone.free_time = data['free_time']
             
             db.session.commit()
+            
+            # 区域配置发生改变，清除缓存
+            from app.extensions import redis_client
+            if redis_client:
+                try:
+                    redis_client.delete('parking:zones:all')
+                except:
+                    pass
+                    
             return {'success': True, 'message': '区域费率更新成功'}, 200
         
         return {'success': False, 'message': '缺少必要参数'}, 400
