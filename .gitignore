@@ -1,6 +1,7 @@
 # --- 系统文件 ---
 .DS_Store
 Thumbs.db
+._*
 
 # --- Python / Flask ---
 __pycache__/
