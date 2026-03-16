@@ -33,37 +33,62 @@
       </div>
     </div>
     
-    <!-- Zone Tabs -->
-    <el-tabs v-model="activeZone" @tab-change="handleZoneChange" class="zone-tabs">
-      <el-tab-pane
-        v-for="zone in parkingStore.zones"
-        :key="zone.zone_id"
-        :label="`${zone.zone_name.substring(0, 2)}`"
-        :name="zone.zone_id"
-      />
-    </el-tabs>
-    
-    <!-- Parking Grid -->
-    <div class="parking-grid-container">
-      <div class="parking-grid" v-loading="parkingStore.loading">
-        <div
-          v-for="spot in parkingStore.spots"
-          :key="spot.spot_id"
-          class="parking-spot"
-          :class="getSpotClass(spot.status)"
-          @click="handleSpotClick(spot)"
-        >
-          <div class="spot-icon">
-            <el-icon v-if="spot.status === 0"><Location /></el-icon>
-            <el-icon v-else-if="spot.status === 1"><Lock /></el-icon>
-            <el-icon v-else-if="spot.status === 2"><Tools /></el-icon>
-            <el-icon v-else><Clock /></el-icon>
-          </div>
-          <div class="spot-no">{{ spot.spot_no }}</div>
-          <div class="spot-status">{{ getStatusText(spot.status) }}</div>
-          <div v-if="spot.current_plate" class="spot-plate">{{ spot.current_plate }}</div>
-        </div>
+    <!-- Zone Tabs & Controls -->
+    <div class="map-controls-card">
+      <el-tabs v-model="activeZone" @tab-change="handleZoneChange" class="zone-tabs">
+        <el-tab-pane
+          v-for="zone in parkingStore.zones"
+          :key="zone.zone_id"
+          :label="`${zone.zone_name.substring(0, 2)}`"
+          :name="zone.zone_id"
+        />
+      </el-tabs>
+      
+      <!-- Drawer Pull Handle -->
+      <div 
+        class="drawer-trigger"
+        @mousedown="handleDragStart"
+        @touchstart="handleDragStart"
+      >
+        <span class="trigger-text">{{ showIfcMap ? '收起返回 2D 地图' : '下拉查看 3D 选车位' }}</span>
+        <el-icon class="arrow-icon" :class="{ 'is-rotated': showIfcMap }"><DArrowRight /></el-icon>
       </div>
+    </div>
+    
+    <!-- Dynamic Map View -->
+    <div class="map-view-wrapper" :style="{ transform: !showIfcMap && dragDelta > 0 ? `translateY(${Math.min(dragDelta, 50)}px)` : 'none', transition: isDragging ? 'none' : 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' }">
+      
+      <!-- 3D IFC Map -->
+      <transition name="map-slide">
+        <div v-show="showIfcMap" class="ifc-container-box">
+          <IfcViewer :ifc-url="'/parking_lot.ifc'" @spot-click="handleIfcSpotClick" />
+        </div>
+      </transition>
+      
+      <!-- 2D Parking Grid -->
+      <transition name="map-slide">
+        <div v-show="!showIfcMap" class="parking-grid-container">
+          <div class="parking-grid" v-loading="parkingStore.loading">
+            <div
+              v-for="spot in parkingStore.spots"
+              :key="spot.spot_id"
+              class="parking-spot"
+              :class="getSpotClass(spot.status)"
+              @click="handleSpotClick(spot)"
+            >
+              <div class="spot-icon">
+                <el-icon v-if="spot.status === 0"><Location /></el-icon>
+                <el-icon v-else-if="spot.status === 1"><Lock /></el-icon>
+                <el-icon v-else-if="spot.status === 2"><Tools /></el-icon>
+                <el-icon v-else><Clock /></el-icon>
+              </div>
+              <div class="spot-no">{{ spot.spot_no }}</div>
+              <div class="spot-status">{{ getStatusText(spot.status) }}</div>
+              <div v-if="spot.current_plate" class="spot-plate">{{ spot.current_plate }}</div>
+            </div>
+          </div>
+        </div>
+      </transition>
     </div>
     
     <!-- Orders Container -->
@@ -380,7 +405,8 @@ import { useUserStore } from '@/stores/user'
 import { useParkingStore } from '@/stores/parking'
 import { useOrderStore } from '@/stores/order'
 import { ElMessage } from 'element-plus'
-import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check, Loading, InfoFilled, CircleClose, SuccessFilled } from '@element-plus/icons-vue'
+import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check, Loading, InfoFilled, CircleClose, SuccessFilled, DArrowRight } from '@element-plus/icons-vue'
+import IfcViewer from '@/components/IfcViewer.vue'
 import { initWebSocket, closeWebSocket } from '@/utils/websocket'
 import { formatCurrency, formatDuration } from '@/utils/format'
 
@@ -426,6 +452,55 @@ const paying = ref(false)
 const simulating = ref(false)
 const orderDurations = reactive({})
 let durationInterval = null
+
+// 3D 地图控制与拖拽
+const showIfcMap = ref(false)
+const dragDelta = ref(0)
+const isDragging = ref(false)
+let startY = 0
+
+const handleDragStart = (e) => {
+  if (showIfcMap.value) {
+    showIfcMap.value = false
+    return
+  }
+  isDragging.value = true
+  startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+  
+  const handleMove = (eMove) => {
+    const currentY = eMove.type.includes('touch') ? eMove.touches[0].clientY : eMove.clientY
+    const delta = currentY - startY
+    if (delta > 0) {
+      dragDelta.value = delta
+    }
+  }
+  
+  const handleEnd = () => {
+    isDragging.value = false
+    if (dragDelta.value > 50) {
+      showIfcMap.value = true
+    }
+    dragDelta.value = 0
+    document.removeEventListener('mousemove', handleMove)
+    document.removeEventListener('mouseup', handleEnd)
+    document.removeEventListener('touchmove', handleMove)
+    document.removeEventListener('touchend', handleEnd)
+  }
+  
+  document.addEventListener('mousemove', handleMove)
+  document.addEventListener('mouseup', handleEnd)
+  document.addEventListener('touchmove', handleMove)
+  document.addEventListener('touchend', handleEnd)
+}
+
+const handleIfcSpotClick = (spotNo) => {
+  const spot = parkingStore.spots.find(s => s.spot_no === spotNo)
+  if (spot) {
+    handleSpotClick(spot)
+  } else {
+    ElMessage.warning(`未在当前区域找到车位 ${spotNo}`)
+  }
+}
 
 // 支付相关
 const currentPaymentOrder = ref(null)
@@ -854,11 +929,79 @@ onUnmounted(() => {
   font-size: 16px;
 }
 
-.zone-tabs {
+/* map controls card added to wrap tabs and drawer */
+.map-controls-card {
   background: white;
   border-radius: 12px;
-  padding: 20px;
   margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+.zone-tabs {
+  background: transparent;
+  padding: 15px 20px 5px 20px;
+  margin-bottom: 0;
+}
+
+.drawer-trigger {
+  padding: 10px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  color: #64748b;
+  font-size: 13px;
+  background: #f8fafc;
+  border-top: 1px solid #f1f5f9;
+  transition: all 0.3s;
+}
+
+.drawer-trigger:active {
+  cursor: grabbing;
+}
+
+.drawer-trigger:hover {
+  background: #f1f5f9;
+  color: #3b82f6;
+}
+
+.drawer-trigger .arrow-icon {
+  font-size: 16px;
+  transform: rotate(90deg);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.drawer-trigger .arrow-icon.is-rotated {
+  transform: rotate(-90deg);
+}
+
+.trigger-text {
+  user-select: none;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.map-view-wrapper {
+  position: relative;
+  min-height: 500px;
+  transform-origin: top center;
+}
+
+.ifc-container-box {
+  background: white;
+  border-radius: 12px;
+  padding: 10px;
+  height: 500px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 10;
 }
 
 .parking-grid-container {
@@ -866,6 +1009,26 @@ onUnmounted(() => {
   border-radius: 12px;
   padding: 30px;
   min-height: 500px;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.map-slide-enter-active,
+.map-slide-leave-active {
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.map-slide-enter-from,
+.map-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.98);
+}
+.map-slide-enter-to,
+.map-slide-leave-from {
+  opacity: 1;
+  transform: translateY(0) scale(1);
 }
 
 .parking-grid {
