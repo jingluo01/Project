@@ -61,7 +61,12 @@
       <!-- 3D IFC Map -->
       <transition name="map-slide">
         <div v-show="showIfcMap" class="ifc-container-box">
-          <IfcViewer :ifc-url="'/parking_lot.ifc'" @spot-click="handleIfcSpotClick" />
+          <IfcViewer 
+            v-if="parkingStore.currentZone?.map_file_path"
+            :ifc-url="parkingStore.currentZone.map_file_path" 
+            :spots="parkingStore.spots"
+            @spot-click="handleIfcSpotClick" 
+          />
         </div>
       </transition>
       
@@ -577,11 +582,21 @@ const handleSpotClick = (spot) => {
   
   // 违约和信用分检查
   if (orderStore.hasViolation) return ElMessage.error('您有违约记录未处理，请先处理违约账单')
+  // 1. 基础信用分检查
   const passScore = sysConfig.value.credit_thresholds?.min || 70
   if (userStore.creditScore < passScore) return ElMessage.error(`信用分不足 ${passScore}，无法预约车位`)
   
-  // 重复预约拦截
-  if (orderStore.activeOrder) return ElMessage.info('您已有预约或正在进行的订单，请先处理后再预约')
+  // 2. 全局订单上限检查 (最多 3 个活跃订单)
+  const activeOrdersCount = orderStore.visibleOrders.length
+  if (activeOrdersCount >= 3) {
+    return ElMessage.warning('您已有 3 个进行中的订单，已达到系统同时预约上限')
+  }
+
+  // 3. 车辆可用性智能预判
+  const hasAvailableCar = userStore.cars.some(car => orderStore.getCarStatus(car.plate_number) === null)
+  if (!hasAvailableCar) {
+    return ElMessage.warning('您的所有车辆都有进行中的订单，无法继续预约')
+  }
   
   // 点击自己的预约车位时提示
   const isMyReserved = spot.status === 3 && userStore.cars.some(c => c.plate_number === spot.current_plate)
@@ -597,18 +612,16 @@ const handleSpotClick = (spot) => {
     return router.push('/profile')
   }
   
+  // 状态注入与弹窗展示
   selectedSpot.value = spot
   
-  // 智能选择空闲车辆
   const availableCar = userStore.cars.find(car => orderStore.getCarStatus(car.plate_number) === null)
   if (availableCar) {
     reservationForm.plate_number = availableCar.plate_number
+    showReservationDialog.value = true
   } else {
-    reservationForm.plate_number = userStore.cars[0]?.plate_number || ''
-    ElMessage.warning('您的所有车辆都有进行中的订单，请先处理后再预约')
+    ElMessage.warning('您的所有车辆都有进行中的订单，无法继续预约')
   }
-  
-  showReservationDialog.value = true
 }
 
 const handleCancelReservation = async (order) => {

@@ -23,7 +23,7 @@ export const useParkingStore = defineStore('parking', {
         },
 
         reservedSpots: (state) => {
-            return state.spots.filter(s => s.status === 2)
+            return state.spots.filter(s => s.status === 3)
         }
     },
 

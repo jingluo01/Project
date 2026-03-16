@@ -16,28 +16,28 @@ class OrderService:
         if not spot_id or not plate_number:
             return {'success': False, 'message': '车位ID和车牌号不能为空'}, 400
         
-        # 1. 信用分检查 (动态读取数据库配置)
+        # 1. 信用分基础准入 (需达到及格线才能进行任何预约)
         from app.models.config import SysConfig
         min_score = int(SysConfig.get_value('MIN_CREDIT_SCORE', current_app.config.get('MIN_CREDIT_SCORE', 70)))
-        
         if user.credit_score < min_score:
             return {'success': False, 'message': f'您的信用分({user.credit_score})低于及格线({min_score})，禁止预约'}, 403
-        
-        # 2. 违约检查 (全局检查：只要有违约记录未处理，无论哪辆车都不能预约)
-        violation_order = ParkingOrder.query.filter(
+
+        # 2. 用户全局活跃订单上限检查 (最多 3 个活跃订单)
+        # 活跃订单定义：预约中(0)、停车中(1)、待结算(2)、已违约(6)
+        active_orders_count = ParkingOrder.query.filter(
             ParkingOrder.user_id == user.user_id,
-            ParkingOrder.status == 6
-        ).first()
-        if violation_order:
-            return {'success': False, 'message': '您有违约记录未处理，请联系管理员或处理欠费以恢复信用'}, 403
- 
-        # 3. 车辆状态检查 (针对当前车牌：预约中、停车中、待支付 状态下不能再次预约)
+            ParkingOrder.status.in_([0, 1, 2, 6])
+        ).count()
+        if active_orders_count >= 3:
+            return {'success': False, 'message': '您已有 3 个进行中的订单，已达到系统同时预约上限'}, 403
+
+        # 3. 车辆唯一性检查 (同一辆车不能有多个活跃订单)
         active_car_order = ParkingOrder.query.filter(
             ParkingOrder.plate_number == plate_number,
-            ParkingOrder.status.in_([0, 1, 2])
+            ParkingOrder.status.in_([0, 1, 2, 6])
         ).first()
         if active_car_order:
-            status_desc = {0: '预约中', 1: '停车中', 2: '待支付'}
+            status_desc = {0: '预约中', 1: '停车中', 2: '待支付', 6: '待处理违约'}
             return {'success': False, 'message': f'该车辆({plate_number})当前处于{status_desc.get(active_car_order.status, "活跃")}状态，不能重复预约'}, 403
         
         # 4. 车辆绑定验证
@@ -69,7 +69,7 @@ class OrderService:
         db.session.add(new_order)
         db.session.commit()
         
-        # 发送 WebSocket 通知
+        # 发送 WebSocket 通知并清理缓存
         from app.services.parking_service import ParkingService
         ParkingService._broadcast_spot_update(spot.spot_id, spot.zone_id, 3, plate_number)
         

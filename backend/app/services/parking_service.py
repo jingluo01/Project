@@ -18,6 +18,24 @@ class ParkingService:
             'status': status,
             'current_plate': current_plate
         })
+        # 状态变更时强制清理 Redis 缓存
+        ParkingService._clear_spots_cache(zone_id)
+
+    @staticmethod
+    def _clear_spots_cache(zone_id=None):
+        """清理车位列表缓存"""
+        from app.extensions import redis_client
+        if not redis_client: return
+        try:
+            if zone_id:
+                redis_client.delete(f'parking:spots:{zone_id}')
+            else:
+                # 清理所有
+                keys = redis_client.keys('parking:spots:*')
+                if keys: redis_client.delete(*keys)
+            redis_client.delete('parking:zones:all')
+        except:
+            pass
 
     @staticmethod
     def get_zones():

@@ -16,7 +16,15 @@ class ParkingZone(db.Model):
     spots = db.relationship('ParkingSpot', backref='zone', lazy='dynamic', cascade='all, delete-orphan')
     
     def to_dict(self):
-        """转换为字典"""
+        """转换为字典 - 包含精确的可预约统计"""
+        # 真正可用的车位 = 状态为0(空闲) 且 没有被关联到 status=0(预约中) 的订单
+        from app.models.order import ParkingOrder
+        reserved_spot_ids = [order.spot_id for order in ParkingOrder.query.filter_by(status=0).all()]
+        truly_available = self.spots.filter(
+            ParkingSpot.status == 0,
+            ~ParkingSpot.spot_id.in_(reserved_spot_ids)
+        ).count() if reserved_spot_ids else self.spots.filter_by(status=0).count()
+
         return {
             'zone_id': self.zone_id,
             'zone_name': self.zone_name,
@@ -24,7 +32,7 @@ class ParkingZone(db.Model):
             'fee_rate': float(self.fee_rate),
             'free_time': self.free_time,
             'total_spots': self.spots.count(),
-            'available_spots': self.spots.filter_by(status=0).count()
+            'available_spots': truly_available
         }
     
     def __repr__(self):
