@@ -5,7 +5,7 @@ import redis
 
 # Initialize extensions
 db = SQLAlchemy()
-socketio = SocketIO(cors_allowed_origins="*")
+socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")
 jwt = JWTManager()
 redis_client = None
 
