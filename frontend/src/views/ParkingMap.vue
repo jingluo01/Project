@@ -573,6 +573,10 @@ const getEstimatedFee = (order) => {
 }
 
 const handleZoneChange = async (zoneId) => {
+  if (!zoneId) return;
+  // 如果已经是当前区域，则跳过，避免重复请求
+  if (parkingStore.currentZoneId === zoneId && parkingStore.spots.length > 0) return;
+  
   await parkingStore.fetchSpots(zoneId)
 }
 
@@ -848,34 +852,50 @@ const updateOrderDuration = () => {
 }
 
 onMounted(async () => {
+  console.log('ParkingMap: Initializing...');
+  
   // Initialize WebSocket
   initWebSocket()
   
-  // Fetch user profile and cars
-  await userStore.fetchProfile()
-  
-  // Fetch system config (for dynamic timeouts)
   try {
-    const configRes = await getAdminConfig()
-    if (configRes.success) {
-      sysConfig.value = configRes.data
+    // 1. Fetch user profile and system config in parallel
+    await Promise.all([
+      userStore.fetchProfile(),
+      (async () => {
+        try {
+          const configRes = await getAdminConfig()
+          if (configRes.success) sysConfig.value = configRes.data
+        } catch (err) {
+          console.error('Failed to load system config', err)
+        }
+      })()
+    ]);
+
+    // 2. Fetch zones
+    await parkingStore.fetchZones()
+    
+    // 3. Set active zone and fetch spots
+    if (parkingStore.zones.length > 0) {
+      const targetZoneId = parkingStore.zones[0].zone_id;
+      activeZone.value = targetZoneId;
+      // Fetch spots manually for the first time to ensure sequential loading
+      await parkingStore.fetchSpots(targetZoneId);
     }
-  } catch (err) {
-    console.error('Failed to load system config')
+    
+    // 4. Fetch orders in background (don't block the UI rendering if possible)
+    orderStore.fetchOrders().catch(err => console.error('Background order fetch failed', err));
+    
+    // 5. Start duration counter
+    durationInterval = setInterval(updateOrderDuration, 1000)
+    
+    console.log('ParkingMap: Initialization complete.');
+  } catch (error) {
+    console.error('Critical initialization error:', error);
+    ElMessage.error('页面初始化失败，请检查网络或刷新重试');
+  } finally {
+    // 确保 loading 状态被重置，防止永久卡死
+    parkingStore.loading = false;
   }
-  
-  // Fetch zones and spots
-  await parkingStore.fetchZones()
-  if (parkingStore.zones.length > 0) {
-    activeZone.value = parkingStore.zones[0].zone_id
-    await parkingStore.fetchSpots(activeZone.value)
-  }
-  
-  // Fetch orders
-  await orderStore.fetchOrders()
-  
-  // Start duration counter
-  durationInterval = setInterval(updateOrderDuration, 1000)
 })
 
 onUnmounted(() => {

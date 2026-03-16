@@ -29,25 +29,34 @@ export const useParkingStore = defineStore('parking', {
 
     actions: {
         async fetchZones() {
+            console.log('parkingStore: Fetching zones...');
             this.loading = true
             try {
                 const res = await getZones()
                 this.zones = res.data
+                console.log(`parkingStore: Found ${this.zones.length} zones`);
 
                 if (this.zones.length > 0 && !this.currentZoneId) {
                     this.currentZoneId = this.zones[0].zone_id
                 }
+            } catch (err) {
+                console.error('parkingStore: fetchZones error', err);
             } finally {
                 this.loading = false
             }
         },
 
         async fetchSpots(zoneId) {
+            if (!zoneId) return;
+            console.log(`parkingStore: Fetching spots for zone ${zoneId}...`);
             this.loading = true
             try {
                 const res = await getSpots(zoneId)
                 this.spots = res.data
                 this.currentZoneId = zoneId
+                console.log(`parkingStore: Loaded ${this.spots.length} spots`);
+            } catch (err) {
+                console.error('parkingStore: fetchSpots error', err);
             } finally {
                 this.loading = false
             }

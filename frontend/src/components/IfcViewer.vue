@@ -220,6 +220,7 @@ const clearScene = () => {
 
 // 核心逻辑：自己生成 3D 地图替代 IFC
 const buildNativeScene = () => {
+  if (!scene) return;
   loading.value = true;
   clearScene();
 
@@ -327,6 +328,7 @@ const addDecorations = (bounds) => {
 
 // 状态同步更新
 const updateStatusMaterials = () => {
+  if (!scene) return;
   props.spots.forEach(spot => {
     const mesh = spotMeshes[spot.spot_no];
     if (mesh && mesh.userData.status !== spot.status) {
@@ -438,12 +440,10 @@ watch(() => props.spots, (newSpots, oldSpots) => {
 }, { deep: true });
 
 onMounted(() => {
-  setTimeout(() => {
-    initScene();
-    buildNativeScene();
-    resizeObserver = new ResizeObserver(() => onWindowResize());
-    if (ifcContainer.value) resizeObserver.observe(ifcContainer.value);
-  }, 200);
+  initScene();
+  buildNativeScene();
+  resizeObserver = new ResizeObserver(() => onWindowResize());
+  if (ifcContainer.value) resizeObserver.observe(ifcContainer.value);
 });
 
 onUnmounted(() => {
