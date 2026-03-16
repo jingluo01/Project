@@ -8,14 +8,16 @@
         "preview": "vite preview"
     },
     "dependencies": {
+        "@element-plus/icons-vue": "^2.3.1",
+        "axios": "^1.6.2",
+        "echarts": "^5.4.3",
+        "element-plus": "^2.5.0",
+        "pinia": "^2.1.7",
+        "socket.io-client": "^4.6.1",
+        "three": "^0.152.0",
         "vue": "^3.4.0",
         "vue-router": "^4.2.5",
-        "pinia": "^2.1.7",
-        "element-plus": "^2.5.0",
-        "axios": "^1.6.2",
-        "socket.io-client": "^4.6.1",
-        "echarts": "^5.4.3",
-        "@element-plus/icons-vue": "^2.3.1"
+        "web-ifc-three": "^0.0.126"
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^5.0.0",
