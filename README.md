@@ -1,322 +1,141 @@
-# 智慧校园停车场预约与管理系统
+# 🅿️ 智慧校园停车场预约与管理系统 (Smart Parking)
 
-基于 Vue 3 + Flask 的全栈校园停车场管理系统，实现实时车位预约、智能计费、信用风控等功能。
+[![Vue](https://img.shields.io/badge/Vue.js-3.x-4fc08d.svg?style=flat-square&logo=vue.js)](https://vuejs.org/)
+[![Flask](https://img.shields.io/badge/Flask-3.x-000000.svg?style=flat-square&logo=flask)](https://flask.palletsprojects.com/)
+[![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1.svg?style=flat-square&logo=mysql)](https://www.mysql.com/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-## 📸 系统截图
+基于 **Vue 3 (Vite)** + **Flask** + **Three.js** 开发的现代化全栈项目。系统集成了 3D 数字化孪生地图、实时 WebSocket 状态推送、智能阶梯计费与信用风控体系，为校园停车提供闭环式管理方案。
 
-系统包含三个主要界面：
+---
 
-1. **登录页面** - 优雅的渐变设计，支持学生/教师/管理员登录
-2. **用户停车地图** - 实时显示车位状态，支持在线预约，信用积分和余额展示
-3. **管理员仪表盘** - 营收统计、用户管理、车位监控、订单管理
+## 🌟 核心亮点 (Key Features)
 
-## ✨ 核心功能
+### 🎨 交互与视觉
+- **3D 数字化孪生**: 采用 Three.js 原生构建 3D 停车地图，支持车位状态实时渲染与交互式预约。
+- **响应式设计**: 完全适配移动端与 PC 端，提供极致流畅的用户体验。
+- **实时同步**: 基于 WebSocket 的毫秒级数据推送，确保车位占用情况多端实时一致。
 
-### 用户端功能
-- ✅ 用户注册/登录（学生、教职工、访客）
-- ✅ 实时车位地图展示（A/B/C 区域切换）
-- ✅ 在线预约车位（悲观锁防止超卖）
-- ✅ 车辆管理（绑定/解绑多辆车）
-- ✅ 钱包充值
-- ✅ 订单历史查询
-- ✅ 信用分系统
-- ✅ WebSocket 实时车位状态推送
+### 💳 业务逻辑
+- **多角色计费**: 自动识别学生、教职工、访客身份，支持差异化折扣与阶梯式计费算法。
+- **信用风控**: 深度集成信用评分体系，支持违约自动扣分、异常订单判定及预约权限限制。
+- **售后保障**: 新增**在线退款申请**（24小时限时）与管理员一键审批原路退回功能。
 
-### 管理员功能
-- ✅ 仪表盘数据统计（营收、活跃用户、订单数）
-- ✅ 营收趋势图表（ECharts）
-- ✅ 车位利用率分析
-- ✅ 用户管理（信用分调整、账号封禁）
-- ✅ 车位管理（状态调整、费率设置）
-- ✅ 订单管理
+### 🛠️ 效率管理
+- **高级数据导出**: 支持全量订单记录导出为 **Excel (.xlsx)** 与 **CSV** 格式，解决长文本折叠排版问题。
+- **车牌自动识别**: 模拟 AI 视觉入场/离场识别逻辑，支持快速入场与自动出场计费。
+- **全方位监控**: 提供营收统计、车位利用率分析、活跃用户趋势等可视化图表。
 
-### 技术亮点
-- 🔒 **并发控制** - 使用数据库悲观锁（`SELECT ... FOR UPDATE`）防止车位超卖
-- 🔄 **实时通信** - WebSocket 实现车位状态毫秒级实时推送
-- 💳 **智能计费** - 基于停车时长、角色折扣的自动计费
-- 🎯 **信用风控** - 超时未支付自动扣除信用分，限制预约权限
-- 📊 **数据可视化** - ECharts 图表展示营收趋势和利用率
+---
 
-## 🏗️ 技术架构
+## 📸 界面预览 (Screenshots)
 
-### 后端技术栈
-- **框架**: Flask 3.0
-- **ORM**: SQLAlchemy
-- **数据库**: MySQL 8.0
-- **缓存**: Redis
-- **实时通信**: Flask-SocketIO
-- **认证**: JWT
-- **定时任务**: APScheduler
+*   **三维直观地图**: `IfcViewer` 驱动的 3D 实景选位
+*   **管理透视镜**: 订单多维筛选、退款待办提醒、多格式一键导出
+*   **用户口袋**: 车辆管理、余额充值、历史账单透明化
 
-### 前端技术栈
-- **框架**: Vue 3 (Composition API)
-- **构建工具**: Vite 5
-- **UI 组件**: Element Plus
-- **状态管理**: Pinia
-- **路由**: Vue Router 4
-- **图表**: ECharts 5
-- **实时通信**: Socket.IO Client
-- **HTTP 客户端**: Axios
+---
 
-### 数据库设计
-- `sys_user` - 用户表（学号、角色、余额、信用分）
-- `car` - 车辆表（人车分离设计）
-- `parking_zone` - 停车区域表（费率、免费时长）
-- `parking_spot` - 车位表（状态、当前车牌）
-- `parking_order` - 订单表（完整生命周期追踪）
+## 🏗️ 技术架构 (Architecture)
 
-## 🚀 快速开始
+| 模块 | 关键技术 |
+| :--- | :--- |
+| **前端 (Frontend)** | Vue 3, Vite 5, Element Plus, Pinia, ECharts 5, Three.js, Socket.io-client |
+| **后端 (Backend)** | Flask 3.0, SQLAlchemy Core, JWT Auth, Flask-SocketIO, APScheduler |
+| **存储 (Storage)** | MySQL 8.0 (持久化), Redis (高速缓存/分布式锁) |
+| **部署 (DevOps)** | Docker Compose (一键编排) |
 
-### 环境要求
-- Python 3.8+
-- Node.js 16+
-- MySQL 8.0
-- Redis
+---
 
-### 1. 启动数据库和 Redis
+## 🚀 快速开始 (Getting Started)
 
-```bash
-# 使用 Docker Compose 启动
-docker-compose up -d
+### 1. 环境准备 (Prerequisites)
+- **Node.js**: 16.x + (推荐 18.x)
+- **Python**: 3.8 +
+- **MySQL**: 8.0 +
+- **Redis**: 6.x +
+
+### 2. 数据库配置 (Database)
+创建名为 `campus_parking` 的数据库：
+```sql
+CREATE DATABASE campus_parking CHARACTER SET utf8mb4;
 ```
 
-### 2. 后端启动
-
+### 3. 后端初始化 (Backend Setup)
 ```bash
 cd backend
-
-# 创建虚拟环境
+# 创建并激活虚拟环境
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+./venv/Scripts/activate  # MacOS/Linux: source venv/bin/activate
 
-# 安装依赖
+# 安装组件
 pip install -r requirements.txt
 
-# 复制环境变量文件
-cp ../.env.example .env
+# 配置环境变量 (填写数据库与 Redis 地址)
+cp .env.example .env
 
-# 初始化数据库
+# 初始化表结构结构与种子数据
 python init_db.py
 
-# 启动后端服务
+# 启动 (默认 5000 端口)
 python run.py
 ```
 
-后端将运行在 `http://localhost:5000`
-
-### 3. 前端启动
-
+### 4. 前端启动 (Frontend Setup)
 ```bash
 cd frontend
-
 # 安装依赖
-npm install
+npm install --legacy-peer-deps
 
-# 启动开发服务器
+# 启动开发服务器 (默认 5173 端口)
 npm run dev
 ```
 
-前端将运行在 `http://localhost:5173`
+### 🐳 5. Docker 一键部署 (Docker Compose)
+如果您已安装 Docker，推荐使用 Compose 进行一键环境编排：
 
-## 👤 测试账号
-
-系统已预置以下测试账号：
-
-| 角色 | 学号/工号 | 密码 | 说明 |
-|------|----------|------|------|
-| 管理员 | admin | admin123 | 完整系统管理权限 |
-| 学生 | 2021001 | 123456 | 9折优惠，已绑定车辆 京A88888 |
-| 教职工 | T2021001 | 123456 | 8折优惠，已绑定车辆 京B12345 |
-
-## 📋 核心业务流程
-
-### 1. 预约流程
+```bash
+# 进入项目根目录直接启动
+docker-compose up -d --build
 ```
-选择车位 → 风控检查（信用分、未支付订单） → 悲观锁锁定车位 → 创建订单 → WebSocket 推送状态更新
-```
+*   **前端访问**: http://localhost:80
+*   **后端 API**: http://localhost:5000
+*   **数据库初始化**: 容器首次启动时，会自动执行 `backend/init_db.py` 逻辑（请参考 `docker-compose.yml` 配置）。
 
-### 2. 入场流程
-```
-车牌识别 → 查找预约订单 → 订单状态变更（已预约→进行中） → 车位状态变更（已预约→占用） → 记录入场时间
-```
+---
 
-### 3. 出场流程
-```
-车牌识别 → 查找进行中订单 → 计算费用（时长×费率×折扣） → 信用分判断 → 自动扣款/待支付 → 释放车位
-```
+## 👤 测试账号 (Test Accounts)
 
-### 4. 违约处理
-```
-24小时未支付 → 定时任务检测 → 订单标记违约 → 扣除信用分20分 → 限制预约权限
-```
+| 身份 | 账号 (user_no) | 密码 | 初始权限与状态 |
+| :--- | :--- | :--- | :--- |
+| **管理员** | `admin` | `admin123` | 营收分析、订单审核、导出权限 |
+| **学生** | `2021001` | `123456` | 9折优惠、实名车辆、部分预存 |
+| **教师** | `T2021001` | `123456` | 8折优惠、VIP 权限 |
 
-## 🔧 配置说明
+---
 
-### 环境变量配置 (.env)
+## 🔧 配置指南 (Configuration)
 
-```env
-# Flask 配置
-FLASK_ENV=development
-SECRET_KEY=your-secret-key
-JWT_SECRET_KEY=your-jwt-secret-key
+### 后端 `.env` 参数
+- `DATABASE_URL`: 格式为 `mysql+pymysql://user:pass@host:port/db_name`
+- `REDIS_URL`: 缓存与 Socket 共享地址
+- `ROLE_DISCOUNT`: 可在 `config.py` 中自定义角色折扣比例
 
-# 数据库配置
-DATABASE_URL=mysql+pymysql://root:password@localhost:3306/campus_parking
+### 💳 支付宝支付集成 (Alipay Setup)
+本系统集成了支付宝沙箱支付环境，配置步骤如下：
+1.  登录 [支付宝开放平台-沙箱环境](https://open.alipay.com/develop/sandbox/app)。
+2.  获取 `APPID` 并填入 `.env`。
+3.  生成 RSA2 密钥对，将 **应用私钥** 填入 `ALIPAY_PRIVATE_KEY`。
+4.  在沙箱配置界面获取 **支付宝公钥**（注意不是应用公钥），填入 `ALIPAY_PUBLIC_KEY`。
+5.  默认网关使用沙箱地址：`https://openapi-sandbox.dl.alipaydev.com/gateway.do`。
 
-# Redis 配置
-REDIS_URL=redis://localhost:6379/0
+### 3D 地图自定义
+地图模型位于 `frontend/public/*.ifc`，可通过 `IfcViewer.vue` 中的 `buildNativeScene` 逻辑自定义渲染布局。
 
-# CORS 配置
-CORS_ORIGINS=http://localhost:5173
-```
-
-### 业务规则配置 (backend/config.py)
-
-```python
-PAYMENT_TIMEOUT_HOURS = 24  # 支付超时时间
-CREDIT_PENALTY = 20  # 违约扣除信用分
-MIN_CREDIT_SCORE = 80  # 最低信用分要求
-PERFECT_CREDIT_SCORE = 100  # 完美信用分
-
-# 角色折扣
-ROLE_DISCOUNT = {
-    0: 1.0,   # 外部用户，无折扣
-    1: 0.9,   # 学生，9折
-    2: 0.8,   # 教职工，8折
-}
-```
-
-## 📁 项目结构
-
-```
-campus-parking/
-├── backend/                 # 后端 Flask 应用
-│   ├── app/
-│   │   ├── models/         # 数据库模型
-│   │   ├── blueprints/     # API 蓝图
-│   │   ├── utils/          # 工具函数
-│   │   └── tasks/          # 后台任务
-│   ├── config.py           # 配置文件
-│   ├── run.py              # 启动入口
-│   └── init_db.py          # 数据库初始化
-├── frontend/               # 前端 Vue 应用
-│   ├── src/
-│   │   ├── views/          # 页面组件
-│   │   ├── components/     # 可复用组件
-│   │   ├── stores/         # Pinia 状态管理
-│   │   ├── api/            # API 请求封装
-│   │   ├── utils/          # 工具函数
-│   │   └── router/         # 路由配置
-│   └── vite.config.js      # Vite 配置
-└── docker-compose.yml      # Docker 编排
-```
-
-## 🔐 安全特性
-
-- JWT Token 认证
-- 密码 Hash 存储（Werkzeug）
-- CORS 跨域保护
-- SQL 注入防护（SQLAlchemy ORM）
-- XSS 防护（Vue 自动转义）
-
-## 🧪 测试建议
-
-### 并发预约测试
-1. 打开多个浏览器窗口
-2. 使用不同账号同时预约同一车位
-3. 验证只有一个用户成功，其他用户收到"车位已被抢"提示
-
-### 信用风控测试
-1. 创建订单但不支付
-2. 等待24小时或手动修改数据库时间
-3. 运行定时任务检查
-4. 验证订单变为违约状态，信用分扣除
-
-### 实时推送测试
-1. 打开两个浏览器窗口
-2. 在一个窗口预约车位
-3. 验证另一个窗口实时看到车位状态变化
-
-## 📝 API 文档
-
-### 认证接口
-- `POST /api/auth/login` - 用户登录
-- `POST /api/auth/register` - 用户注册
-- `POST /api/auth/reset-password` - 密码重置
-
-### 用户接口
-- `GET /api/user/profile` - 获取个人信息
-- `POST /api/user/car/bind` - 绑定车辆
-- `DELETE /api/user/car/remove/:id` - 解绑车辆
-- `POST /api/user/recharge` - 钱包充值
-
-### 停车场接口
-- `GET /api/parking/zones` - 获取停车区域
-- `GET /api/parking/spots` - 获取车位状态
-- `POST /api/parking/enter` - 车辆入场
-- `POST /api/parking/exit` - 车辆出场
-
-### 订单接口
-- `POST /api/order/create` - 创建订单
-- `POST /api/order/pay` - 支付订单
-- `POST /api/order/cancel` - 取消订单
-- `GET /api/order/list` - 订单列表
-
-### 管理员接口
-- `GET /api/admin/stats` - 仪表盘统计
-- `GET /api/admin/users` - 用户列表
-- `POST /api/admin/user/update` - 更新用户
-- `POST /api/admin/parking/update` - 更新车位
-- `GET /api/admin/orders` - 所有订单
-
-## 🛠️ 开发指南
-
-### 添加新的停车区域
-
-```python
-# backend/init_db.py
-new_zone = ParkingZone(
-    zone_name='D区(体育馆)',
-    fee_rate=4.00,
-    free_time=20
-)
-db.session.add(new_zone)
-db.session.commit()
-```
-
-### 自定义费率计算
-
-修改 `backend/app/utils/fee_calculator.py` 中的 `calculate_parking_fee` 函数
-
-### 调整信用分规则
-
-修改 `backend/config.py` 中的 `CREDIT_PENALTY` 和 `MIN_CREDIT_SCORE`
-
-## 🐛 常见问题
-
-### 1. WebSocket 连接失败
-- 检查后端是否使用 `eventlet` 启动
-- 确认前端代理配置正确
-- 检查防火墙设置
-
-### 2. 数据库连接失败
-- 确认 MySQL 服务已启动
-- 检查 `.env` 中的数据库配置
-- 验证数据库用户权限
-
-### 3. 前端无法访问后端 API
-- 检查 Vite 代理配置
-- 确认后端 CORS 设置
-- 验证后端服务运行状态
+---
 
 ## 📄 许可证
-
-MIT License
+本项目采用 [MIT License](LICENSE).
 
 ## 👥 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 📧 联系方式
-
-如有问题，请通过 Issue 反馈。
+诚邀贡献！请提交 PR 或开 Issue。
