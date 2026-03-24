@@ -8,6 +8,7 @@ from app.services.car_service import CarService
 from app.utils.service_utils import handle_service_exception
 from decimal import Decimal
 
+
 class UserService:
     """用户服务类"""
 
@@ -23,8 +24,8 @@ class UserService:
             tuple: 包含具有用户数据的响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
         profile = user.to_dict()
-        profile['cars'] = CarService.get_user_cars(user)
-        return {'success': True, 'data': profile}, 200
+        profile["cars"] = CarService.get_user_cars(user)
+        return {"success": True, "data": profile}, 200
 
     @staticmethod
     @handle_service_exception(message_prefix="充值失败")
@@ -40,18 +41,18 @@ class UserService:
             tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
         if not amount:
-            return {'success': False, 'message': '充值金额不能为空'}, 400
-        
+            return {"success": False, "message": "充值金额不能为空"}, 400
+
         amount = Decimal(str(amount))
         if amount <= 0:
-            return {'success': False, 'message': '充值金额必须大于0'}, 400
-        
+            return {"success": False, "message": "充值金额必须大于0"}, 400
+
         user.balance += amount
         db.session.commit()
         return {
-            'success': True,
-            'message': '充值成功',
-            'data': {'balance': float(user.balance)}
+            "success": True,
+            "message": "充值成功",
+            "data": {"balance": float(user.balance)},
         }, 200
 
     @staticmethod
@@ -70,13 +71,13 @@ class UserService:
             page=page, per_page=per_page, error_out=False
         )
         return {
-            'success': True,
-            'data': {
-                'users': [user.to_dict() for user in pagination.items],
-                'total': pagination.total,
-                'page': page,
-                'per_page': per_page
-            }
+            "success": True,
+            "data": {
+                "users": [user.to_dict() for user in pagination.items],
+                "total": pagination.total,
+                "page": page,
+                "per_page": per_page,
+            },
         }, 200
 
     @staticmethod
@@ -94,18 +95,22 @@ class UserService:
         """
         user = SysUser.query.get(user_id)
         if not user:
-            return {'success': False, 'message': '用户不存在'}, 404
-        
-        if 'username' in data:
-            user.username = data['username']
-        if 'role' in data:
-            user.role = data['role']
-        if 'credit_score' in data:
-            user.credit_score = data['credit_score']
-        if 'balance' in data:
-            user.balance = Decimal(str(data['balance']))
-        if 'is_active' in data:
-            user.is_active = data['is_active']
-        
+            return {"success": False, "message": "用户不存在"}, 404
+
+        if "username" in data:
+            user.username = data["username"]
+        if "role" in data:
+            user.role = data["role"]
+        if "credit_score" in data:
+            user.credit_score = data["credit_score"]
+        if "balance" in data:
+            user.balance = Decimal(str(data["balance"]))
+        if "is_active" in data:
+            user.is_active = data["is_active"]
+
         db.session.commit()
-        return {'success': True, 'message': '用户信息更新成功', 'data': user.to_dict()}, 200
+        return {
+            "success": True,
+            "message": "用户信息更新成功",
+            "data": user.to_dict(),
+        }, 200

@@ -11,6 +11,7 @@ from app.models.order import ParkingOrder
 from app.models.parking import ParkingSpot
 from app.models.config import SysConfig
 
+
 class AdminService:
     """管理端服务类"""
 
@@ -24,66 +25,67 @@ class AdminService:
         """
         today = datetime.utcnow().date()
         yesterday = today - timedelta(days=1)
-        
+
         today_revenue = db.session.query(func.sum(ParkingOrder.total_fee)).filter(
-            and_(
-                ParkingOrder.status == 3,
-                func.date(ParkingOrder.pay_time) == today
-            )
-        ).scalar() or Decimal('0.00')
+            and_(ParkingOrder.status == 3, func.date(ParkingOrder.pay_time) == today)
+        ).scalar() or Decimal("0.00")
 
         yesterday_revenue = db.session.query(func.sum(ParkingOrder.total_fee)).filter(
             and_(
-                ParkingOrder.status == 3,
-                func.date(ParkingOrder.pay_time) == yesterday
+                ParkingOrder.status == 3, func.date(ParkingOrder.pay_time) == yesterday
             )
-        ).scalar() or Decimal('0.00')
-        
+        ).scalar() or Decimal("0.00")
+
         growth = 0
         if yesterday_revenue > 0:
-            growth = round(float((today_revenue - yesterday_revenue) / yesterday_revenue * 100), 1)
+            growth = round(
+                float((today_revenue - yesterday_revenue) / yesterday_revenue * 100), 1
+            )
         elif today_revenue > 0:
             growth = 100.0
-            
-        active_users = db.session.query(func.count(func.distinct(ParkingOrder.user_id))).filter(
-            ParkingOrder.status == 1
-        ).scalar() or 0
-        
+
+        active_users = (
+            db.session.query(func.count(func.distinct(ParkingOrder.user_id)))
+            .filter(ParkingOrder.status == 1)
+            .scalar()
+            or 0
+        )
+
         current_orders = ParkingOrder.query.filter(
             ParkingOrder.status.in_([0, 1])
         ).count()
-        
+
         available_spots = ParkingSpot.query.filter_by(status=0).count()
-        
+
         revenue_trend = []
         for i in range(6, -1, -1):
             date = today - timedelta(days=i)
             daily_revenue = db.session.query(func.sum(ParkingOrder.total_fee)).filter(
-                and_(
-                    ParkingOrder.status == 3,
-                    func.date(ParkingOrder.pay_time) == date
-                )
-            ).scalar() or Decimal('0.00')
-            revenue_trend.append({
-                'date': date.isoformat(),
-                'revenue': float(daily_revenue)
-            })
-        
+                and_(ParkingOrder.status == 3, func.date(ParkingOrder.pay_time) == date)
+            ).scalar() or Decimal("0.00")
+            revenue_trend.append(
+                {"date": date.isoformat(), "revenue": float(daily_revenue)}
+            )
+
         total_spots = ParkingSpot.query.count()
-        occupied_spots = ParkingSpot.query.filter(ParkingSpot.status.in_([1, 2])).count()
-        utilization_rate = (occupied_spots / total_spots * 100) if total_spots > 0 else 0
-        
+        occupied_spots = ParkingSpot.query.filter(
+            ParkingSpot.status.in_([1, 2])
+        ).count()
+        utilization_rate = (
+            (occupied_spots / total_spots * 100) if total_spots > 0 else 0
+        )
+
         return {
-            'success': True,
-            'data': {
-                'today_revenue': float(today_revenue),
-                'revenue_growth': growth,
-                'active_users': active_users,
-                'current_orders': current_orders,
-                'available_spots': available_spots,
-                'revenue_trend': revenue_trend,
-                'utilization_rate': round(utilization_rate, 2)
-            }
+            "success": True,
+            "data": {
+                "today_revenue": float(today_revenue),
+                "revenue_growth": growth,
+                "active_users": active_users,
+                "current_orders": current_orders,
+                "available_spots": available_spots,
+                "revenue_trend": revenue_trend,
+                "utilization_rate": round(utilization_rate, 2),
+            },
         }, 200
 
     @staticmethod
@@ -95,16 +97,17 @@ class AdminService:
             tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
         from flask import current_app
+
         app_config = current_app.config
-        
+
         def fetch_config(key, default_val):
             """
             获取单个配置项的值。
-            
+
             Args:
                 key (str): 配置键名
                 default_val (any): 默认值
-                
+
             Returns:
                 any: 配置值，优先返回数据库中的值
             """
@@ -114,30 +117,54 @@ class AdminService:
                     return json.loads(db_val)
                 except:
                     try:
-                        if '.' in db_val: return float(db_val)
+                        if "." in db_val:
+                            return float(db_val)
                         return int(db_val)
                     except:
                         return db_val
             else:
-                val_to_store = json.dumps(default_val) if isinstance(default_val, (dict, list)) else str(default_val)
+                val_to_store = (
+                    json.dumps(default_val)
+                    if isinstance(default_val, (dict, list))
+                    else str(default_val)
+                )
                 SysConfig.set_value(key, val_to_store)
                 return default_val
 
         data = {
-            'credit_thresholds': {
-                'min': fetch_config('MIN_CREDIT_SCORE', app_config.get('MIN_CREDIT_SCORE', 70)),
-                'perfect': fetch_config('PERFECT_CREDIT_SCORE', app_config.get('PERFECT_CREDIT_SCORE', 100)),
-                'good': fetch_config('GOOD_CREDIT_SCORE', app_config.get('GOOD_CREDIT_SCORE', 85)),
+            "credit_thresholds": {
+                "min": fetch_config(
+                    "MIN_CREDIT_SCORE", app_config.get("MIN_CREDIT_SCORE", 70)
+                ),
+                "perfect": fetch_config(
+                    "PERFECT_CREDIT_SCORE", app_config.get("PERFECT_CREDIT_SCORE", 100)
+                ),
+                "good": fetch_config(
+                    "GOOD_CREDIT_SCORE", app_config.get("GOOD_CREDIT_SCORE", 85)
+                ),
             },
-            'roles': fetch_config('ROLE_DISCOUNT', app_config.get('ROLE_DISCOUNT', {})),
-            'violation_fee': fetch_config('VIOLATION_FEE', app_config.get('VIOLATION_FEE', 5.0)),
-            'reservation_timeout': fetch_config('RESERVATION_TIMEOUT_MINUTES', app_config.get('RESERVATION_TIMEOUT_MINUTES', 30)),
-            'fee_multiplier': fetch_config('FEE_MULTIPLIER', app_config.get('FEE_MULTIPLIER', 10.0)),
-            'payment_timeout': fetch_config('PAYMENT_TIMEOUT_HOURS', app_config.get('PAYMENT_TIMEOUT_HOURS', 24)),
-            'penalty_timeout': fetch_config('CREDIT_PENALTY_TIMEOUT', app_config.get('CREDIT_PENALTY_TIMEOUT', 30)),
-            'penalty_delay': fetch_config('CREDIT_PENALTY_DELAY', app_config.get('CREDIT_PENALTY_DELAY', 10))
+            "roles": fetch_config("ROLE_DISCOUNT", app_config.get("ROLE_DISCOUNT", {})),
+            "violation_fee": fetch_config(
+                "VIOLATION_FEE", app_config.get("VIOLATION_FEE", 5.0)
+            ),
+            "reservation_timeout": fetch_config(
+                "RESERVATION_TIMEOUT_MINUTES",
+                app_config.get("RESERVATION_TIMEOUT_MINUTES", 30),
+            ),
+            "fee_multiplier": fetch_config(
+                "FEE_MULTIPLIER", app_config.get("FEE_MULTIPLIER", 10.0)
+            ),
+            "payment_timeout": fetch_config(
+                "PAYMENT_TIMEOUT_HOURS", app_config.get("PAYMENT_TIMEOUT_HOURS", 24)
+            ),
+            "penalty_timeout": fetch_config(
+                "CREDIT_PENALTY_TIMEOUT", app_config.get("CREDIT_PENALTY_TIMEOUT", 30)
+            ),
+            "penalty_delay": fetch_config(
+                "CREDIT_PENALTY_DELAY", app_config.get("CREDIT_PENALTY_DELAY", 10)
+            ),
         }
-        return {'success': True, 'data': data}, 200
+        return {"success": True, "data": data}, 200
 
     @staticmethod
     def update_system_config(data):
@@ -151,33 +178,38 @@ class AdminService:
             tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
         try:
-            if 'credit_thresholds' in data:
-                c = data['credit_thresholds']
-                if 'min' in c: SysConfig.set_value('MIN_CREDIT_SCORE', c['min'])
-                if 'good' in c: SysConfig.set_value('GOOD_CREDIT_SCORE', c['good'])
-                if 'perfect' in c: SysConfig.set_value('PERFECT_CREDIT_SCORE', c['perfect'])
-            
-            if 'roles' in data:
-                SysConfig.set_value('ROLE_DISCOUNT', json.dumps(data['roles']))
-            
-            if 'violation_fee' in data:
-                SysConfig.set_value('VIOLATION_FEE', data['violation_fee'])
-            
-            if 'reservation_timeout' in data:
-                SysConfig.set_value('RESERVATION_TIMEOUT_MINUTES', data['reservation_timeout'])
-            
-            if 'fee_multiplier' in data:
-                SysConfig.set_value('FEE_MULTIPLIER', data['fee_multiplier'])
-            
-            if 'payment_timeout' in data:
-                SysConfig.set_value('PAYMENT_TIMEOUT_HOURS', data['payment_timeout'])
+            if "credit_thresholds" in data:
+                c = data["credit_thresholds"]
+                if "min" in c:
+                    SysConfig.set_value("MIN_CREDIT_SCORE", c["min"])
+                if "good" in c:
+                    SysConfig.set_value("GOOD_CREDIT_SCORE", c["good"])
+                if "perfect" in c:
+                    SysConfig.set_value("PERFECT_CREDIT_SCORE", c["perfect"])
 
-            if 'penalty_timeout' in data:
-                SysConfig.set_value('CREDIT_PENALTY_TIMEOUT', data['penalty_timeout'])
-            
-            if 'penalty_delay' in data:
-                SysConfig.set_value('CREDIT_PENALTY_DELAY', data['penalty_delay'])
-                
-            return {'success': True, 'message': '配置更新成功，已实时生效'}, 200
+            if "roles" in data:
+                SysConfig.set_value("ROLE_DISCOUNT", json.dumps(data["roles"]))
+
+            if "violation_fee" in data:
+                SysConfig.set_value("VIOLATION_FEE", data["violation_fee"])
+
+            if "reservation_timeout" in data:
+                SysConfig.set_value(
+                    "RESERVATION_TIMEOUT_MINUTES", data["reservation_timeout"]
+                )
+
+            if "fee_multiplier" in data:
+                SysConfig.set_value("FEE_MULTIPLIER", data["fee_multiplier"])
+
+            if "payment_timeout" in data:
+                SysConfig.set_value("PAYMENT_TIMEOUT_HOURS", data["payment_timeout"])
+
+            if "penalty_timeout" in data:
+                SysConfig.set_value("CREDIT_PENALTY_TIMEOUT", data["penalty_timeout"])
+
+            if "penalty_delay" in data:
+                SysConfig.set_value("CREDIT_PENALTY_DELAY", data["penalty_delay"])
+
+            return {"success": True, "message": "配置更新成功，已实时生效"}, 200
         except Exception as e:
-            return {'success': False, 'message': f'更新失败: {str(e)}'}, 500
+            return {"success": False, "message": f"更新失败: {str(e)}"}, 500
