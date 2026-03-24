@@ -1,3 +1,7 @@
+"""
+认证服务模块，提供用户登录、注册及密码重置等核心业务逻辑。
+"""
+
 from flask import current_app
 from app.extensions import db
 from app.models.user import SysUser
@@ -5,9 +9,20 @@ from app.utils.auth_utils import hash_password, verify_password, generate_token
 from app.utils.validators import validate_user_no
 
 class AuthService:
+    """认证服务类"""
+
     @staticmethod
     def login(user_no, password):
-        """用户登录业务逻辑"""
+        """
+        处理用户登录业务逻辑。
+
+        Args:
+            user_no (str): 学号/工号
+            password (str): 登录密码
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组，格式为 ({'success': bool, 'message': str, 'data': dict}, int)
+        """
         if not user_no or not password:
             return {'success': False, 'message': '学号/工号和密码不能为空'}, 400
         
@@ -23,18 +38,14 @@ class AuthService:
         
         token = generate_token(user.user_id, user.role)
         
-        # --- 核心：单设备登陆逻辑 - 覆盖旧 Session ---
         import app.extensions
         if app.extensions.redis_client:
-            # 1. 存储当前唯一有效的 Token，过期时间与 JWT 一致
             app.extensions.redis_client.set(
                 f"user_session:{user.user_id}", 
                 token, 
                 ex=int(current_app.config['JWT_ACCESS_TOKEN_EXPIRES'].total_seconds())
             )
             
-            # 2. 实时推送踢出通知 (WebSocket)
-            # 向该用户的私有频道发送踢出指令，排除刚生成的这个 token
             app.extensions.socketio.emit(
                 'kickout', 
                 {'message': '您的账号在另一台设备登录，您已被强制下线'}, 
@@ -53,10 +64,16 @@ class AuthService:
     @staticmethod
     def register(user_no, username, password):
         """
-        用户注册业务逻辑 (交叉验证方案)
-        1. 验证基础信息完整性
-        2. 交叉验证学校官方库信息 (保证本校人员)
-        3. 自动获取并应用校方库定义的角色身份
+        处理用户注册业务逻辑 (交叉验证方案)。
+        包含三个阶段：验证基础信息完整性、交叉验证学校官方库信息 (保证本校人员)、自动获取并应用校方库定义的角色身份。
+
+        Args:
+            user_no (str): 学号/工号
+            username (str): 真实姓名
+            password (str): 登录密码
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
         from app.models.school import SchoolMember
 
@@ -69,20 +86,15 @@ class AuthService:
         if len(password) < 6:
             return {'success': False, 'message': '密码长度至少6位'}, 400
 
-        # --- 第一阶段: 本地查重 ---
         if SysUser.query.filter_by(user_no=user_no).first():
             return {'success': False, 'message': '该账号已在系统中注册'}, 409
 
-        # --- 第二阶段: 外部校方库交叉验证 ---
-        # 验证逻辑: 学号必须存在且姓名必须完全匹配
         school_record = SchoolMember.query.filter_by(user_no=user_no, real_name=username).first()
         
         if not school_record:
             # 安全提示: 不明确告知是学号不存在还是姓名不匹配，增加破解难度
             return {'success': False, 'message': '身份验证失败：学号/工号与姓名不匹配，或非本校在库人员'}, 403
 
-        # --- 第三阶段: 自动角色分配与账户创建 ---
-        # 从校方库同步角色: 1(学生), 2(教师)
         role = school_record.member_type
         
         new_user = SysUser(
@@ -100,7 +112,6 @@ class AuthService:
             
             token = generate_token(new_user.user_id, new_user.role)
             
-            # --- 同步单设备登陆逻辑 ---
             import app.extensions
             if app.extensions.redis_client:
                 app.extensions.redis_client.set(
@@ -123,7 +134,16 @@ class AuthService:
 
     @staticmethod
     def reset_password(user_no, new_password):
-        """密码重置业务逻辑"""
+        """
+        处理密码重置业务逻辑。
+
+        Args:
+            user_no (str): 学号/工号
+            new_password (str): 新密码
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
+        """
         if not user_no or not new_password:
             return {'success': False, 'message': '请填写完整信息'}, 400
         

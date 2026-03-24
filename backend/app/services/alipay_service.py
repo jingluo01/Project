@@ -1,39 +1,13 @@
 """
-支付宝支付服务
+支付宝支付服务模块，提供支付宝扫码支付、支付状态查询及退款等核心功能。
 """
+
 from alipay import AliPay
 from flask import current_app
 from datetime import datetime
 from app.models.order import ParkingOrder
 from app.extensions import db
-
-class MockAlipay:
-    """Mock Alipay service for development"""
-    def api_alipay_trade_precreate(self, **kwargs):
-        from datetime import datetime
-        return {
-            'code': '10000',
-            'msg': 'Success',
-            'qr_code': 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=MockPayment', # Generate a real QR code image for visual effect
-            'out_trade_no': kwargs.get('out_trade_no')
-        }
-    
-    def api_alipay_trade_query(self, **kwargs):
-        from datetime import datetime
-        return {
-            'code': '10000',
-            'trade_status': 'TRADE_SUCCESS',
-            'trade_no': 'MOCK_' + datetime.now().strftime('%Y%m%d%H%M%S'),
-            'total_amount': '0.01'
-        }
-        
-    def api_alipay_trade_refund(self, **kwargs):
-        from datetime import datetime
-        return {
-            'code': '10000',
-            'refund_fee': kwargs.get('refund_amount'),
-            'gmt_refund_pay': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        }
+from app.utils.service_utils import handle_service_exception
 
 class AlipayService:
     """支付宝支付服务类"""
@@ -43,16 +17,20 @@ class AlipayService:
     @staticmethod
     def _format_key(key, key_type):
         """
-        格式化RSA密钥
-        如果密钥是一行字符串，将其转换为PEM格式（带头尾和换行）
+        格式化 RSA 密钥。
+        如果密钥是一行字符串，将其转换为 PEM 格式（带头尾和换行）。
+
+        Args:
+            key (str): 待格式化的密钥字符
+            key_type (str): 密钥类型，可选 'PRIVATE' 或 'PUBLIC'
+
+        Returns:
+            str: 格式化后的 PEM 字符串
         """
         if not key or key.startswith('-----'):
             return key
             
-        # 去除可能存在的空格
         key = key.replace(' ', '')
-            
-        # 每64个字符插入一个换行符
         pem_key = '\n'.join([key[i:i+64] for i in range(0, len(key), 64)])
         
         if key_type == 'PRIVATE':
@@ -62,17 +40,20 @@ class AlipayService:
 
     @classmethod
     def get_alipay(cls):
-        """获取支付宝实例（高性能单例）"""
+        """
+        获取正式的支付宝实例（单例模式）。
+
+        Returns:
+            AliPay: 官方 AliPay 客户端实例
+        """
         if not cls._alipay_instance:
             try:
-                # 预读配置
                 appid = current_app.config.get('ALIPAY_APPID')
                 p_key = current_app.config.get('ALIPAY_PRIVATE_KEY')
                 pub_key = current_app.config.get('ALIPAY_PUBLIC_KEY')
                 
-                # Check directly for missing config to fallback early
                 if not appid or not p_key or not pub_key:
-                    raise Exception("Missing Alipay Configuration")
+                    raise Exception("Missing Alipay Configuration in Environment Variables")
 
                 p_key_fmt = cls._format_key(p_key, 'PRIVATE')
                 pub_key_fmt = cls._format_key(pub_key, 'PUBLIC')
@@ -83,216 +64,168 @@ class AlipayService:
                     app_private_key_string=p_key_fmt,
                     alipay_public_key_string=pub_key_fmt,
                     sign_type="RSA2",
-                    debug=True
+                    debug=True # 沙箱环境默认设为True，生产环境请改为False
                 )
             except Exception as e:
-                # In development, fallback to Mock if config is invalid
-                if current_app.config.get('FLASK_ENV') == 'development' or current_app.debug:
-                    current_app.logger.warning(f"支付宝初始化失败 ('{str(e)}'). 开发环境已切换为 Mock 模式。")
-                    cls._alipay_instance = MockAlipay()
-                else:
-                    current_app.logger.error(f"支付宝实例初始化失败: {str(e)}")
-                    raise e
+                current_app.logger.error(f"支付宝实例初始化失败: {str(e)}")
+                raise e
         return cls._alipay_instance
     
     @classmethod
+    @handle_service_exception(message_prefix="创建支付二维码失败")
     def create_qrcode_payment(cls, order_id):
         """
-        创建扫码支付订单
+        创建真实扫码支付订单。
         
         Args:
-            order_id: 订单ID
+            order_id (int): 订单 ID
             
         Returns:
-            dict: {
-                'success': bool,
-                'data': {
-                    'qr_code': str,  # 二维码链接
-                    'out_trade_no': str,  # 商户订单号
-                    'expire_time': int  # 过期时间（秒）
-                },
-                'message': str
-            }
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组。
         """
-        try:
-            # 获取订单信息
-            order = ParkingOrder.query.get(order_id)
-            if not order:
-                return {'success': False, 'message': '订单不存在'}, 404
-            
-            if order.status not in [2, 6]:  # 只有待支付和违约订单可以支付
-                return {'success': False, 'message': '订单状态不正确'}, 400
-            
-            # 获取支付宝实例
-            alipay = cls.get_alipay()
-            
-            # 测试用：如果金额为0，强制改为0.01以通过支付宝校验
-            amount = float(order.total_fee)
-            if amount <= 0:
-                amount = 0.01
-            
-            # 创建预下单（扫码支付）
-            result = alipay.api_alipay_trade_precreate(
-                subject=f"停车费支付-{order.plate_number}",
-                out_trade_no=order.order_no,
-                total_amount=str(amount),
-                timeout_express="5m"  # 二维码5分钟有效
-            )
-            
-            if result.get('code') == '10000':
-                # 成功生成二维码
-                qr_code = result.get('qr_code')
-                return {
-                    'success': True,
-                    'data': {
-                        'qr_code': qr_code,
-                        'out_trade_no': order.order_no,
-                        'expire_time': 300  # 5分钟
-                    },
-                    'message': '二维码生成成功'
-                }, 200
-            else:
-                return {
-                    'success': False,
-                    'message': f"生成二维码失败: {result.get('msg', '未知错误')}"
-                }, 500
-                
-        except Exception as e:
-            current_app.logger.error(f"创建支付宝二维码失败: {str(e)}")
-            return {'success': False, 'message': f'创建支付失败: {str(e)}'}, 500
+        if not order_id:
+            return {'success': False, 'message': '订单ID不能为空'}, 400
+        
+        order = ParkingOrder.query.get(order_id)
+        if not order:
+            return {'success': False, 'message': '订单不存在'}, 404
+        
+        if order.status not in [2, 6]:
+            return {'success': False, 'message': '当前订单状态不允许发起支付'}, 400
+        
+        alipay = cls.get_alipay()
+        
+        # 为了兼容沙箱金额校验，强制将0或无金额替换为0.01进行支付测试
+        amount = float(order.total_fee)
+        if amount <= 0:
+            amount = 0.01
+        
+        result = alipay.api_alipay_trade_precreate(
+            subject=f"停车费支付-{order.plate_number}",
+            out_trade_no=order.order_no,
+            total_amount=str(amount),
+            timeout_express="5m"
+        )
+        
+        if result.get('code') == '10000':
+            return {
+                'success': True,
+                'data': {
+                    'qr_code': result.get('qr_code'),
+                    'out_trade_no': order.order_no,
+                    'expire_time': 300
+                },
+                'message': '支付二维码生成成功'
+            }, 200
+        else:
+            return {
+                'success': False,
+                'message': f"生成二维码失败: {result.get('msg', '发生未知错误')}"
+            }, 500
     
     @classmethod
+    @handle_service_exception(message_prefix="查询支付状态失败")
     def query_payment_status(cls, out_trade_no):
         """
-        查询支付状态
+        查询订单真实支付状态，并执行相应的数据库订单状态更新。
         
         Args:
-            out_trade_no: 商户订单号
+            out_trade_no (str): 商户订单号
             
         Returns:
-            dict: {
-                'success': bool,
-                'data': {
-                    'trade_status': str,  # WAIT_BUYER_PAY, TRADE_SUCCESS, TRADE_CLOSED
-                    'trade_no': str,  # 支付宝交易号
-                    'total_amount': str  # 交易金额
-                },
-                'message': str
-            }
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
-        try:
-            # 获取支付宝实例
-            alipay = cls.get_alipay()
+        if not out_trade_no:
+            return {'success': False, 'message': '订单号不能为空'}, 400
+        
+        alipay = cls.get_alipay()
+        result = alipay.api_alipay_trade_query(out_trade_no=out_trade_no)
+        
+        if result.get('code') == '10000':
+            trade_status = result.get('trade_status')
             
-            # 查询交易状态
-            # 查询交易状态
-            result = alipay.api_alipay_trade_query(out_trade_no=out_trade_no)
+            if trade_status == 'TRADE_SUCCESS':
+                order = ParkingOrder.query.filter_by(order_no=out_trade_no).first()
+                if order and order.status in [2, 6]:
+                    order.status = 3
+                    order.pay_time = datetime.utcnow()
+                    order.pay_way = 2
+                    order.trade_no = result.get('trade_no')
+                    db.session.commit()
+                    
+                    current_app.logger.info(f"订单 {out_trade_no} 支付宝支付核销完成")
             
-            if result.get('code') == '10000':
-                trade_status = result.get('trade_status')
-                
-                # 如果支付成功，更新订单状态
-                if trade_status == 'TRADE_SUCCESS':
-                    order = ParkingOrder.query.filter_by(order_no=out_trade_no).first()
-                    if order and order.status in [2, 6]:
-                        order.status = 3  # 已完成
-                        order.pay_time = datetime.utcnow()
-                        order.pay_way = 2  # 支付宝支付
-                        order.trade_no = result.get('trade_no') # 保存支付宝交易号
-                        db.session.commit()
-                        
-                        current_app.logger.info(f"订单 {out_trade_no} 支付宝支付成功")
-                
-                return {
-                    'success': True,
-                    'data': {
-                        'trade_status': trade_status,
-                        'trade_no': result.get('trade_no', ''),
-                        'total_amount': result.get('total_amount', '0')
-                    },
-                    'message': '查询成功'
-                }, 200
-            else:
-                # 交易不存在或查询失败
-                return {
-                    'success': True,
-                    'data': {
-                        'trade_status': 'NOT_EXIST',
-                        'trade_no': '',
-                        'total_amount': '0'
-                    },
-                    'message': result.get('sub_msg', '交易不存在')
-                }, 200
-        except Exception as e:
-            current_app.logger.error(f"查询支付宝支付状态失败: {str(e)}")
-            return {'success': False, 'message': f'查询失败: {str(e)}'}, 500
+            return {
+                'success': True,
+                'data': {
+                    'trade_status': trade_status,
+                    'trade_no': result.get('trade_no', ''),
+                    'total_amount': result.get('total_amount', '0')
+                },
+                'message': '查询成功'
+            }, 200
+        else:
+            return {
+                'success': True,
+                'data': {
+                    'trade_status': 'NOT_EXIST',
+                    'trade_no': '',
+                    'total_amount': '0'
+                },
+                'message': result.get('sub_msg', '该交易不存在或还未扫码')
+            }, 200
 
     @classmethod
+    @handle_service_exception(message_prefix="退款失败")
     def refund_payment(cls, out_trade_no, refund_amount, reason="用户申请退款"):
         """
-        支付宝原路退款
+        执行支付宝真实原路退款功能。
         
         Args:
-            out_trade_no: 商户订单号
-            refund_amount: 退款金额
-            reason: 退款原因
+            out_trade_no (str): 商户订单号
+            refund_amount (str | float): 需退款金额
+            reason (str, optional): 退款原因. Defaults to "用户申请退款".
             
         Returns:
-            dict: { 'success': bool, 'message': str, 'data': dict }
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
-        try:
-            alipay = cls.get_alipay()
+        alipay = cls.get_alipay()
+        
+        order = ParkingOrder.query.filter_by(order_no=out_trade_no).first()
+        trade_no = order.trade_no if order else None
+        
+        refund_params = {
+            "refund_amount": str(refund_amount),
+            "refund_reason": reason
+        }
+        if trade_no:
+            refund_params["trade_no"] = trade_no
+        else:
+            refund_params["out_trade_no"] = out_trade_no
             
-            # 尝试获取 trade_no 进行精准退款
-            from app.models.order import ParkingOrder
-            order = ParkingOrder.query.filter_by(order_no=out_trade_no).first()
-            trade_no = order.trade_no if order else None
-            
-            # 优先使用 trade_no
-            refund_params = {
-                "refund_amount": str(refund_amount),
-                "refund_reason": reason
-            }
-            if trade_no:
-                refund_params["trade_no"] = trade_no
-            else:
-                refund_params["out_trade_no"] = out_trade_no
-                
-            result = alipay.api_alipay_trade_refund(**refund_params)
-            
-            # 打印调试信息
-            current_app.logger.info(f"[退款调试] 订单号: {out_trade_no}")
-            current_app.logger.info(f"[退款调试] trade_no: {trade_no}")
-            current_app.logger.info(f"[退款调试] 退款参数: {refund_params}")
-            current_app.logger.info(f"[退款调试] 支付宝返回: {result}")
-            
-            if result.get('code') == '10000':
-                return {
-                    'success': True,
-                    'message': '支付宝退款成功',
-                    'data': {
-                        'refund_fee': result.get('refund_fee'),
-                        'gmt_refund_pay': result.get('gmt_refund_pay')
-                    }
-                }, 200
-            elif result.get('code') in ['20000', '40004'] and current_app.config.get('DEBUG'):
-                # 沙箱环境常见错误的降级处理
-                # 20000: 系统异常
-                # 40004: 买家状态非法（沙箱账号限制）
-                current_app.logger.warning(f"支付宝沙箱退款异常({result.get('sub_code')})，模拟退款成功: {out_trade_no}")
-                return {
-                    'success': True,
-                    'message': '退款成功（沙箱模拟）',
-                    'data': {
-                        'refund_fee': str(refund_amount),
-                        'gmt_refund_pay': datetime.utcnow().isoformat()
-                    }
-                }, 200
-            else:
-                return {
-                    'success': False,
-                    'message': f"支付宝退款失败: {result.get('sub_msg', '未知错误')}"
-                }, 400
-        except Exception as e:
-            current_app.logger.error(f"支付宝退款异常: {str(e)}")
-            return {'success': False, 'message': f"退款系统异常: {str(e)}"}, 500
+        result = alipay.api_alipay_trade_refund(**refund_params)
+        
+        if result.get('code') == '10000':
+            return {
+                'success': True,
+                'message': '支付宝退款成功',
+                'data': {
+                    'refund_fee': result.get('refund_fee'),
+                    'gmt_refund_pay': result.get('gmt_refund_pay')
+                }
+            }, 200
+        elif result.get('code') in ['20000', '40004'] and current_app.config.get('DEBUG'):
+            current_app.logger.warning(f"由于在沙箱环境出现异常({result.get('sub_code')})，退款自动绕过进入模拟成功状态: {out_trade_no}")
+            return {
+                'success': True,
+                'message': '由于处于沙箱环境，系统已模拟退款成功',
+                'data': {
+                    'refund_fee': str(refund_amount),
+                    'gmt_refund_pay': datetime.utcnow().isoformat()
+                }
+            }, 200
+        else:
+            return {
+                'success': False,
+                'message': f"支付宝退款失败: {result.get('sub_msg', '未知错误')}"
+            }, 400

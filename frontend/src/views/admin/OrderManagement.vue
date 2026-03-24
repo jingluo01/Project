@@ -31,6 +31,7 @@
           <el-option label="已取消" :value="4" />
           <el-option label="已退款" :value="5" />
           <el-option label="超时违约" :value="6" />
+          <el-option label="退款申请中" :value="7" />
         </el-select>
         <el-input
           v-model="searchKeyword"
@@ -42,6 +43,19 @@
           @keyup.enter="fetchOrders"
         />
         <el-button type="primary" icon="Search" @click="fetchOrders">执行查询</el-button>
+        <el-dropdown @command="handleExport" trigger="click" class="ml-1">
+          <el-button type="success">
+            <el-icon><Download /></el-icon>
+            <span style="margin-left: 4px;">导出数据</span>
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="xlsx">导出为 Excel 工作簿 (.xlsx)</el-dropdown-item>
+              <el-dropdown-item command="csv">导出为 CSV (.csv)</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </div>
 
@@ -107,13 +121,16 @@
               @click="handleForceClose(row)"
             >结束</el-button>
             <el-button 
-              v-if="row.status === 3" 
+              v-if="row.status === 3 || row.status === 7" 
               size="small" 
               type="danger" 
               link 
               icon="RefreshLeft"
               @click="handleRefund(row)"
-            >退款</el-button>
+            >
+              {{ row.status === 7 ? '处理退款' : '退款' }}
+              <el-badge v-if="row.status === 7" is-dot class="ml-1" type="danger" />
+            </el-button>
           </div>
         </template>
       </el-table-column>
@@ -215,11 +232,11 @@
             @click="handleForceClose(currentOrder)"
           >强制释放车位</el-button>
           <el-button 
-            v-if="currentOrder.status === 3" 
+            v-if="currentOrder.status === 3 || currentOrder.status === 7" 
             type="danger" 
             style="flex: 1"
             @click="handleRefund(currentOrder)"
-          >立即退款</el-button>
+          >{{ currentOrder.status === 7 ? '批准退款' : '立即退款' }}</el-button>
         </div>
       </div>
     </el-drawer>
@@ -228,6 +245,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import * as XLSX from 'xlsx'
+import { Download, ArrowDown } from '@element-plus/icons-vue'
 import { getAllOrders, forceExitOrder } from '@/api/admin'
 import { refundOrder, cancelOrder } from '@/api/order'
 import { formatCurrency, formatDate, getOrderStatusText, getOrderStatusType } from '@/utils/format'
@@ -271,6 +290,70 @@ const fetchOrders = async () => {
     total.value = res.data.total
   } finally {
     loading.value = false
+  }
+}
+
+const handleExport = async (format) => {
+  ElMessage.info('正在生成导出文件，请稍候...')
+  try {
+    const params = {
+      page: 1,
+      perPage: 10000, 
+      status: statusFilter.value,
+      query: searchKeyword.value
+    }
+    
+    if (dateRange.value && dateRange.value.length === 2) {
+      params.startDate = dateRange.value[0] + ' 00:00:00'
+      params.endDate = dateRange.value[1] + ' 23:59:59'
+    }
+
+    const res = await getAllOrders(params)
+    const exportData = res.data.orders
+    
+    if (!exportData || exportData.length === 0) {
+      ElMessage.warning('没有可导出的数据')
+      return
+    }
+
+    const formattedData = exportData.map(row => {
+      const inTime = row.in_time ? formatDate(row.in_time) : (row.reserve_time ? formatDate(row.reserve_time) : '')
+      const outTime = row.out_time ? formatDate(row.out_time) : ''
+      return {
+        '订单记录编号': row.order_no,
+        '车牌号': row.plate_number,
+        '关联用户': row.username || row.user_id || '',
+        '用户学号/工号': row.user_no || '',
+        '入场时间': inTime,
+        '出场时间': outTime,
+        '状态': getOrderStatusText(row.status),
+        '费用总计(元)': Number(row.total_fee || 0)
+      }
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(formattedData)
+    // 动态设置列宽，解决时间截断显示 ###### 且排版更好的问题
+    worksheet['!cols'] = [
+      { wch: 26 }, // 订单记录编号
+      { wch: 12 }, // 车牌号
+      { wch: 12 }, // 关联用户
+      { wch: 15 }, // 学号
+      { wch: 22 }, // 入场时间
+      { wch: 22 }, // 出场时间
+      { wch: 10 }, // 状态
+      { wch: 12 }, // 费用
+    ]
+
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '历史订单数据')
+
+    const timestamp = new Date().toISOString().replace(/T/, '_').replace(/[:.]/g, '').substring(0, 15)
+    const filename = `订单数据导出_${timestamp}.${format}`
+    
+    XLSX.writeFile(workbook, filename, { bookType: format === 'csv' ? 'csv' : 'xlsx' })
+    ElMessage.success('导出成功')
+  } catch (err) {
+    ElMessage.error('导出失败: ' + (err.message || '未知错误'))
   }
 }
 
@@ -412,5 +495,9 @@ onMounted(fetchOrders)
   font-size: 11px;
   color: #94a3b8;
   font-family: 'JetBrains Mono', monospace;
+}
+
+.ml-1 {
+  margin-left: 4px;
 }
 </style>

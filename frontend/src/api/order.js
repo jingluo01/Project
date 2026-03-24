@@ -28,3 +28,7 @@ export const getOrders = (params) => {
 export const refundOrder = (data) => {
     return request.post('/order/refund', data)
 }
+
+export const applyRefund = (data) => {
+    return request.post('/order/refund/apply', data)
+}

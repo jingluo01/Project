@@ -1,3 +1,7 @@
+"""
+管理端服务模块，提供数据统计和系统配置管理等功能。
+"""
+
 from sqlalchemy import func, and_
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -8,9 +12,16 @@ from app.models.parking import ParkingSpot
 from app.models.config import SysConfig
 
 class AdminService:
+    """管理端服务类"""
+
     @staticmethod
     def get_stats():
-        """获取仪表盘统计数据逻辑 (增加动态增长率计算)"""
+        """
+        获取仪表盘统计数据逻辑 (增加动态增长率计算)。
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
+        """
         today = datetime.utcnow().date()
         yesterday = today - timedelta(days=1)
         
@@ -28,7 +39,6 @@ class AdminService:
             )
         ).scalar() or Decimal('0.00')
         
-        # 计算增长率
         growth = 0
         if yesterday_revenue > 0:
             growth = round(float((today_revenue - yesterday_revenue) / yesterday_revenue * 100), 1)
@@ -78,26 +88,37 @@ class AdminService:
 
     @staticmethod
     def get_system_config():
-        """获取系统配置 (数据库优先)"""
+        """
+        获取系统配置，优先从数据库获取，若不存在则使用默认配置并初始化数据库。
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
+        """
         from flask import current_app
         app_config = current_app.config
         
-        # 尝试从数据库读取，若无则使用代码配置并初始化数据库
         def fetch_config(key, default_val):
+            """
+            获取单个配置项的值。
+            
+            Args:
+                key (str): 配置键名
+                default_val (any): 默认值
+                
+            Returns:
+                any: 配置值，优先返回数据库中的值
+            """
             db_val = SysConfig.get_value(key)
             if db_val is not None:
-                # 尝试解析 JSON (针对 roles 等复杂结构)
                 try:
                     return json.loads(db_val)
                 except:
-                    # 尝试转换数字类型
                     try:
                         if '.' in db_val: return float(db_val)
                         return int(db_val)
                     except:
                         return db_val
             else:
-                # 初始化数据库
                 val_to_store = json.dumps(default_val) if isinstance(default_val, (dict, list)) else str(default_val)
                 SysConfig.set_value(key, val_to_store)
                 return default_val
@@ -120,7 +141,15 @@ class AdminService:
 
     @staticmethod
     def update_system_config(data):
-        """批量更新系统配置至数据库"""
+        """
+        批量更新系统配置至数据库。
+
+        Args:
+            data (dict): 包含待更新配置的字典数据
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
+        """
         try:
             if 'credit_thresholds' in data:
                 c = data['credit_thresholds']

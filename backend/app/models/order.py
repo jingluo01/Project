@@ -12,7 +12,7 @@ class ParkingOrder(db.Model):
     spot_id = db.Column(db.Integer, db.ForeignKey('parking_spot.spot_id'), nullable=False)
     plate_number = db.Column(db.String(20), nullable=False, comment='车牌号')
     
-    # 状态机: 0-已预约, 1-进行中, 2-待支付, 3-已完成, 4-已取消, 5-已退款, 6-超时违约
+    # 状态机: 0-已预约, 1-进行中, 2-待支付, 3-已完成, 4-已取消, 5-已退款, 6-超时违约, 7-退款申请中
     status = db.Column(db.Integer, default=0, comment='订单状态')
     
     # 时间轴

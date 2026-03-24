@@ -17,7 +17,8 @@
         "three": "^0.152.0",
         "vue": "^3.4.0",
         "vue-router": "^4.2.5",
-        "web-ifc-three": "^0.0.126"
+        "web-ifc-three": "^0.0.126",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@vitejs/plugin-vue": "^5.0.0",

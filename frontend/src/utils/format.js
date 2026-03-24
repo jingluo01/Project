@@ -28,7 +28,8 @@ export const getOrderStatusText = (status) => {
         3: '已完成',
         4: '已取消',
         5: '已退款',
-        6: '超时违约'
+        6: '超时违约',
+        7: '退款申请中'
     }
     return statusMap[status] || '未知'
 }
@@ -41,7 +42,8 @@ export const getOrderStatusType = (status) => {
         3: 'success',   // 已完成 - 绿色
         4: 'info',      // 已取消 - 灰色
         5: '',          // 已退款 - 青色（自定义）
-        6: 'danger'     // 超时违约 - 红色
+        6: 'danger',    // 超时违约 - 红色
+        7: 'warning'    // 退款申请中 - 橙色
     }
     return typeMap[status] !== undefined ? typeMap[status] : 'info'
 }

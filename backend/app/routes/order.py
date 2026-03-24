@@ -66,3 +66,11 @@ def refund_order(current_user):
     data = request.get_json()
     result, status_code = OrderService.refund_order(current_user, data.get('order_id'))
     return jsonify(result), status_code
+
+@order_bp.route('/refund/apply', methods=['POST'])
+@token_required
+def apply_refund(current_user):
+    """申请退款"""
+    data = request.get_json()
+    result, status_code = OrderService.apply_refund(current_user, data.get('order_id'))
+    return jsonify(result), status_code

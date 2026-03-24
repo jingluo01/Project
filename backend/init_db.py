@@ -78,16 +78,19 @@ def init_database():
         # 创建停车区域
         zone_a = ParkingZone(
             zone_name='A区(教学楼)',
+            map_file_path='/zone_a.ifc',
             fee_rate=5.00,
             free_time=15
         )
         zone_b = ParkingZone(
             zone_name='B区(宿舍)',
+            map_file_path='/zone_b.ifc',
             fee_rate=3.00,
             free_time=30
         )
         zone_c = ParkingZone(
             zone_name='C区(访客)',
+            map_file_path='/zone_c.ifc',
             fee_rate=10.00,
             free_time=10
         )

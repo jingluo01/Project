@@ -62,8 +62,7 @@
       <transition name="map-slide">
         <div v-show="showIfcMap" class="ifc-container-box">
           <IfcViewer 
-            v-if="parkingStore.currentZone?.map_file_path"
-            :ifc-url="parkingStore.currentZone.map_file_path" 
+            :ifc-url="parkingStore.currentZone?.map_file_path || ''" 
             :spots="parkingStore.spots"
             @spot-click="handleIfcSpotClick" 
           />

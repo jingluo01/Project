@@ -62,6 +62,27 @@
                     </el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column label="操作" width="100" fixed="right">
+                  <template #default="{ row }">
+                    <el-button 
+                      v-if="row.status === 0" 
+                      size="small" 
+                      type="danger" 
+                      link 
+                      @click="handleCancelOrder(row)"
+                    >取消预约</el-button>
+                    <el-button 
+                      v-if="row.status === 3" 
+                      size="small" 
+                      type="warning" 
+                      link 
+                      @click="handleApplyRefund(row)"
+                    >申请退款</el-button>
+                    <span v-if="[4, 5, 7].includes(row.status)" class="action-text">
+                      {{ row.status === 7 ? '退款处理中' : (row.status === 4 ? '已取消' : '已退款') }}
+                    </span>
+                  </template>
+                </el-table-column>
               </el-table>
             </el-scrollbar>
           </div>
@@ -207,6 +228,7 @@ import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { useOrderStore } from '@/stores/order'
 import { bindCar, removeCar, recharge } from '@/api/user'
+import { cancelOrder, applyRefund } from '@/api/order'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Van, Refresh, Money } from '@element-plus/icons-vue'
 import { formatCurrency, formatDate, getRoleText, getOrderStatusText, getOrderStatusType } from '@/utils/format'
@@ -325,6 +347,34 @@ const handleRemoveCar = async (carId) => {
       console.error('Remove car failed:', error)
     }
   }
+}
+
+const handleCancelOrder = (row) => {
+  ElMessageBox.confirm('确定要取消该预约单吗？', '提示', {
+    confirmButtonText: '确定',
+    cancelButtonText: '暂不取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await cancelOrder({ order_id: row.order_id })
+      ElMessage.success('预约已取消')
+      orderStore.fetchOrders()
+    } catch (e) {}
+  }).catch(() => {})
+}
+
+const handleApplyRefund = (row) => {
+  ElMessageBox.confirm('确定要对此订单申请退款吗？退款将在24小时内由人工审核发回原支付账户。', '申请退款', {
+    confirmButtonText: '确定退款',
+    cancelButtonText: '暂不退款',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await applyRefund({ order_id: row.order_id })
+      ElMessage.success('退款申请已提交')
+      orderStore.fetchOrders()
+    } catch (e) {}
+  }).catch(() => {})
 }
 
 onMounted(async () => {
@@ -551,5 +601,11 @@ onMounted(async () => {
 
 .mr-1 {
   margin-right: 4px;
+}
+
+.action-text {
+  font-size: 12px;
+  color: #94a3b8;
+  white-space: nowrap;
 }
 </style>
