@@ -51,8 +51,8 @@ yarn-error.log*
 .parcel-cache/
 
 # --- Environment Secrets/Configs ---
-# USER explicitly requested to keep configuration info
-# .env
+# DO NOT commit .env files containing sensitive data
+.env
 .env.local
 .env.*.local
 !.env.example
