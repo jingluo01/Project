@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     libffi-dev \
     libssl-dev \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
 # 复制依赖文件
@@ -27,8 +28,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制项目代码
 COPY . .
 
+# 设置入口脚本权限
+RUN chmod +x entrypoint.sh
+
 # 暴露端口
 EXPOSE 5000
 
-# 启动命令 (使用 gunicorn + eventlet)
-CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:5000", "run:app"]
+# 入口脚本
+ENTRYPOINT ["./entrypoint.sh"]
+
+# 启动命令 (作为 ENTRYPOINT 的参数)
+CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-k", "eventlet", "-b", "0.0.0.0:5000", "run:app"]

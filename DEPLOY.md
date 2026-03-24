@@ -40,18 +40,19 @@ docker compose ps
 ```
 你应该能看到 `frontend`, `backend`, `mysql`, `redis` 四个容器都在 Running 状态。
 
-## 4. 初始化数据 (首次部署必做)
+## 4. 初始化数据 (首次部署特别说明)
 
-服务首次启动时数据库是空的，需要初始化数据（创建管理员、车位、测试账号等）。
+本系统已通过 `backend/entrypoint.sh` **实现了自动初始化检测**：
+- 当后端容器启动时，会自动等待 MySQL 就绪。
+- 系统会自动执行 `python init_db.py`。
+- 如果数据库已有用户（非首次启动），初始化脚本会自动跳过，**不会覆盖现有数据**。
 
-**执行数据初始化脚本：**
+**手动强行初始化或修复数据：**
+如果您需要手动重新导入师生基础数据：
 ```bash
-# 使用 run 命令即使后端在重启中也能执行
-docker compose run --rm backend python init_school_db.py
-docker compose run --rm backend python init_db.py
+docker compose exec backend python init_school_db.py
 ```
-
-看到 "Database initialized successfully" 即表示成功。
+看到 "Success" 字样即可。
 
 ## 5. 访问系统
 
