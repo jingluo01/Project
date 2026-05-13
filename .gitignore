@@ -83,8 +83,9 @@ logs/
 .trae/
 
 # --- Model Weights ---
-*.pt
-*.pth
+# *.pt
+# *.pth
+# Uncomment above lines to ignore model weights (large files)
 
 # --- SQLite Database ---
 *.db
