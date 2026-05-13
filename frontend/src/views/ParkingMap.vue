@@ -7,6 +7,15 @@
       </div>
       
       <div class="header-right">
+        <el-button 
+          type="primary" 
+          icon="Camera"
+          @click="openPlateRecognition"
+          class="plate-rec-btn"
+        >
+          车牌识别
+        </el-button>
+        
         <div class="credit-score">
           <el-progress
             type="circle"
@@ -399,6 +408,81 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 车牌识别对话框 -->
+    <el-dialog 
+      v-model="showPlateDialog" 
+      title="车牌识别" 
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <div class="plate-dialog-content">
+        <!-- 上传区域 -->
+        <div 
+          class="upload-area"
+          :class="{ 'drag-over': isDragOver }"
+          @drop.prevent="handleDrop"
+          @dragover.prevent="isDragOver = true"
+          @dragleave="isDragOver = false"
+          @click="triggerFileInput"
+        >
+          <input 
+            ref="fileInput" 
+            type="file" 
+            accept="image/*" 
+            class="file-input"
+            @change="handleFileSelect"
+          >
+          <div v-if="!selectedImage" class="upload-placeholder">
+            <el-icon :size="48" color="#999"><Camera /></el-icon>
+            <div class="upload-text">点击或拖拽上传车牌图片</div>
+            <div class="upload-hint">支持 JPG、PNG 格式</div>
+          </div>
+          <div v-else class="upload-preview">
+            <img :src="selectedImage" alt="车牌预览" class="preview-image">
+            <div class="preview-actions">
+              <el-button size="small" @click.stop="clearImage">重新选择</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 识别结果 -->
+        <div v-if="recognizedPlate" class="recognition-result">
+          <div class="result-header">
+            <el-icon :size="24" color="#10b981"><Check /></el-icon>
+            <span>识别成功</span>
+          </div>
+          <div class="plate-display">
+            <span class="plate-chars">{{ recognizedPlate }}</span>
+          </div>
+          <div class="result-actions">
+            <el-button type="primary" @click="confirmPlate">确认使用此车牌</el-button>
+          </div>
+        </div>
+
+        <!-- 加载状态 -->
+        <div v-if="recognizing" class="recognizing-state">
+          <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+          <span>正在识别中...</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showPlateDialog = false" size="large">取消</el-button>
+          <el-button 
+            type="primary" 
+            @click="handleRecognize" 
+            :loading="recognizing"
+            :disabled="!selectedImage"
+            size="large"
+          >
+            <el-icon class="mr-1"><Search /></el-icon>
+            开始识别
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -409,13 +493,14 @@ import { useUserStore } from '@/stores/user'
 import { useParkingStore } from '@/stores/parking'
 import { useOrderStore } from '@/stores/order'
 import { ElMessage } from 'element-plus'
-import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check, Loading, InfoFilled, CircleClose, SuccessFilled, DArrowRight } from '@element-plus/icons-vue'
+import { Wallet, Location, Lock, Clock, Van, WarningFilled, Tools, Check, Loading, InfoFilled, CircleClose, SuccessFilled, DArrowRight, Camera, Search } from '@element-plus/icons-vue'
 import IfcViewer from '@/components/IfcViewer.vue'
 import { initWebSocket, closeWebSocket } from '@/utils/websocket'
 import { formatCurrency, formatDuration } from '@/utils/format'
 
 import { getAdminConfig } from '@/api/admin'
 import { createAlipayQRCode, queryAlipayStatus } from '@/api/payment'
+import { getZones, getSpots, vehicleEnter, vehicleExit, recognizePlate } from '@/api/parking'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -514,6 +599,15 @@ const qrCodeUrl = ref('')
 const qrCodeLoading = ref(false)
 const pollingStatus = ref('')
 let pollingTimer = null
+
+// 车牌识别相关
+const showPlateDialog = ref(false)
+const fileInput = ref(null)
+const selectedImage = ref('')
+const selectedFile = ref(null)
+const isDragOver = ref(false)
+const recognizing = ref(false)
+const recognizedPlate = ref('')
 
 // 系统配置
 const sysConfig = ref({ reservation_timeout: 30, fee_multiplier: 10.0 })
@@ -903,7 +997,110 @@ onUnmounted(() => {
     clearInterval(durationInterval)
   }
 })
-</script>
+
+// 车牌识别相关方法
+const triggerFileInput = () => {
+  fileInput.value?.click()
+}
+
+const handleFileSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (file) {
+    processFile(file)
+  }
+}
+
+const handleDrop = (event) => {
+  isDragOver.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file && file.type.startsWith('image/')) {
+    processFile(file)
+  }
+}
+
+const processFile = (file) => {
+  selectedFile.value = file
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    selectedImage.value = e.target?.result
+    recognizedPlate.value = ''
+  }
+  reader.readAsDataURL(file)
+}
+
+const clearImage = () => {
+  selectedImage.value = ''
+  selectedFile.value = null
+  recognizedPlate.value = ''
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+const handleRecognize = async () => {
+  if (!selectedFile.value) return
+  
+  recognizing.value = true
+  recognizedPlate.value = ''
+  
+  try {
+    const response = await recognizePlate(selectedFile.value)
+    if (response.success && response.plate_number) {
+      recognizedPlate.value = response.plate_number
+      ElMessage.success('车牌识别成功')
+    } else {
+      ElMessage.error('未能识别车牌，请重新上传图片')
+    }
+  } catch (error) {
+    console.error('Plate recognition failed:', error)
+    ElMessage.error('识别失败，请重试')
+  } finally {
+    recognizing.value = false
+  }
+}
+
+const confirmPlate = async () => {
+  if (!recognizedPlate.value) return
+  
+  showPlateDialog.value = false
+  
+  // 查找匹配的订单（预约中或停车中的订单）
+  const matchedOrder = orderStore.visibleOrders.find(order => 
+    order.plate_number === recognizedPlate.value
+  )
+  
+  if (matchedOrder) {
+    // 有匹配的订单，显示订单信息
+    const statusText = matchedOrder.status === 0 ? '预约中' : 
+                       matchedOrder.status === 1 ? '停车中' : '订单进行中'
+    ElMessage.success(`识别成功！找到匹配订单：${recognizedPlate.value} (${statusText})`)
+    
+    // 如果是预约中状态，可以提示快速入场
+    if (matchedOrder.status === 0) {
+      handleStartParking(matchedOrder)
+    }
+  } else {
+    // 没有匹配的订单，绑定为访客用户
+    ElMessage.info(`未找到 ${recognizedPlate.value} 的订单，将作为访客入场`)
+    
+    // 调用车辆入场接口
+    try {
+      await vehicleEnter({ plate_number: recognizedPlate.value })
+      ElMessage.success(`访客入场成功：${recognizedPlate.value}`)
+      await parkingStore.fetchSpots(activeZone.value)
+      await orderStore.fetchOrders()
+    } catch (error) {
+      console.error('Vehicle enter failed:', error)
+      ElMessage.error('访客入场失败，请重试')
+    }
+  }
+}
+
+// 打开车牌识别对话框
+const openPlateRecognition = () => {
+  showPlateDialog.value = true
+  clearImage()
+}</script>
 
 <style scoped>
 .parking-map-container {
@@ -928,7 +1125,23 @@ onUnmounted(() => {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
+}
+
+.plate-rec-btn {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  border: none;
+  color: white;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 8px;
+  transition: all 0.3s;
+}
+
+.plate-rec-btn:hover {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .credit-score {
@@ -1758,5 +1971,118 @@ onUnmounted(() => {
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+/* 车牌识别对话框样式 */
+.plate-dialog-content {
+  padding: 20px 0;
+}
+
+.upload-area {
+  border: 2px dashed #d1d5db;
+  border-radius: 12px;
+  padding: 40px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #fafafa;
+}
+
+.upload-area:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.upload-area.drag-over {
+  border-color: #3b82f6;
+  background: #dbeafe;
+  transform: scale(1.02);
+}
+
+.file-input {
+  display: none;
+}
+
+.upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.upload-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.upload-hint {
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.upload-preview {
+  position: relative;
+}
+
+.preview-image {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.preview-actions {
+  margin-top: 12px;
+}
+
+.recognition-result {
+  margin-top: 24px;
+  padding: 20px;
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #065f46;
+  margin-bottom: 16px;
+}
+
+.plate-display {
+  padding: 16px 24px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin-bottom: 16px;
+}
+
+.plate-chars {
+  font-size: 32px;
+  font-weight: 900;
+  color: #1e293b;
+  letter-spacing: 4px;
+  font-family: 'Arial Black', sans-serif;
+}
+
+.result-actions {
+  display: flex;
+  justify-content: center;
+}
+
+.recognizing-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+  color: #3b82f6;
+  font-size: 16px;
 }
 </style>

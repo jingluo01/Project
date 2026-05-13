@@ -78,3 +78,13 @@ storage/
 # --- Logs ---
 logs/
 *.log
+
+# --- Trae IDE ---
+.trae/
+
+# --- Model Weights ---
+*.pt
+*.pth
+
+# --- SQLite Database ---
+*.db

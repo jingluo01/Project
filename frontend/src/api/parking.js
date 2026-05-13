@@ -15,3 +15,11 @@ export const vehicleEnter = (data) => {
 export const vehicleExit = (data) => {
     return request.post('/parking/exit', data)
 }
+
+export const recognizePlate = (imageFile) => {
+    const formData = new FormData()
+    formData.append('image', imageFile)
+    return request.post('/parking/recognize-plate', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    })
+}

@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.utils.auth_utils import token_required
-from app.services.parking_service import ParkingService
+from app.services.parking_service import ParkingService, parking_service
 
 parking_bp = Blueprint('parking', __name__)
 
@@ -38,6 +38,31 @@ def vehicle_exit():
         auto_pay=auto_pay
     )
     return jsonify(result), status_code
+
+@parking_bp.route('/recognize-plate', methods=['POST'])
+def recognize_plate():
+    """车牌识别接口"""
+    try:
+        if 'image' not in request.files:
+            return jsonify({"success": False, "message": "请上传图片"}), 400
+        
+        image_file = request.files['image']
+        if image_file.filename == '':
+            return jsonify({"success": False, "message": "请选择图片"}), 400
+        
+        # 读取图像数据
+        image_data = image_file.read()
+        
+        # 识别车牌
+        plate_number = parking_service.recognize_plate_from_image(image_data)
+        
+        if plate_number:
+            return jsonify({"success": True, "plate_number": plate_number}), 200
+        else:
+            return jsonify({"success": False, "message": "未能识别车牌"}), 404
+            
+    except Exception as e:
+        return jsonify({"success": False, "message": f"识别失败: {str(e)}"}), 500
 
 def register_socketio_events(socketio_instance):
     """注册WebSocket事件"""
