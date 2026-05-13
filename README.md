@@ -54,34 +54,43 @@
 - **Python**: 3.8 +
 - **MySQL**: 8.0 +
 - **Redis**: 6.x +
+- **Git**: 用于克隆项目
 
-### 2. 数据库配置 (Database)
-创建名为 `campus_parking` 的数据库：
-```sql
-CREATE DATABASE campus_parking CHARACTER SET utf8mb4;
+### 2. 克隆项目 (Clone Repository)
+```bash
+git clone https://github.com/your-username/campus-parking.git
+cd campus-parking
 ```
 
-### 3. 后端初始化 (Backend Setup)
+### 3. 数据库配置 (Database)
+创建名为 `campus_parking` 和 `school_official` 的数据库：
+```sql
+CREATE DATABASE campus_parking CHARACTER SET utf8mb4;
+CREATE DATABASE school_official CHARACTER SET utf8mb4;
+```
+
+### 4. 后端初始化 (Backend Setup)
 ```bash
 cd backend
 # 创建并激活虚拟环境
 python -m venv venv
 ./venv/Scripts/activate  # MacOS/Linux: source venv/bin/activate
 
-# 安装组件
+# 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量 (填写数据库与 Redis 地址)
+# 配置环境变量 (复制模板并填写实际配置)
 cp .env.example .env
+# 编辑 .env 文件，填写数据库连接信息、Redis地址等
 
-# 初始化表结构结构与种子数据
+# 初始化表结构与种子数据
 python init_db.py
 
 # 启动 (默认 5000 端口)
 python run.py
 ```
 
-### 4. 前端启动 (Frontend Setup)
+### 5. 前端启动 (Frontend Setup)
 ```bash
 cd frontend
 # 安装依赖
@@ -90,6 +99,21 @@ npm install --legacy-peer-deps
 # 启动开发服务器 (默认 5173 端口)
 npm run dev
 ```
+
+### ⚠️ 模型文件说明 (Model Files)
+由于 YOLO 模型文件较大（约 200MB），未包含在仓库中。如需使用车牌识别功能：
+
+1. **下载 YOLO 模型**：
+   - 访问 [Ultralytics YOLOv8](https://github.com/ultralytics/ultralytics)
+   - 下载 `yolov8n.pt` 或其他版本模型
+   
+2. **放置模型文件**：
+   - 将模型文件放置在 `backend/app/models/` 目录下
+   - 在 `.env` 中配置模型路径（如有需要）
+
+3. **备选方案**：
+   - 系统已集成 HyperLPR3 轻量级车牌识别库
+   - 无需额外模型即可实现基本车牌识别功能
 
 ### 🐳 5. Docker 一键部署 (Docker Compose)
 如果您已安装 Docker，推荐使用 Compose 进行一键环境编排：
