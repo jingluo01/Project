@@ -673,10 +673,10 @@ const handleZoneChange = async (zoneId) => {
   await parkingStore.fetchSpots(zoneId)
 }
 
-const handleSpotClick = (spot) => {
+const handleSpotClick = async (spot) => {
+
   // 维修中的车位直接提示
   if (spot.status === 2) return ElMessage.warning('该车位正在维护中，暂停使用')
-  
   // 违约和信用分检查
   if (orderStore.hasViolation) return ElMessage.error('您有违约记录未处理，请先处理违约账单')
   // 1. 基础信用分检查
@@ -1091,7 +1091,7 @@ const confirmPlate = async () => {
       await orderStore.fetchOrders()
     } catch (error) {
       console.error('Vehicle enter failed:', error)
-      ElMessage.error('访客入场失败，请重试')
+      ElMessage.error(error.response?.data?.message || '入场失败，请重试')
     }
   }
 }

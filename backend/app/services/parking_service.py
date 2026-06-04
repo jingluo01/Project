@@ -33,9 +33,9 @@ def _import_lpr():
     global LicensePlateCatcher, YOLO
     if LicensePlateCatcher is None:
         from hyperlpr3 import LicensePlateCatcher as LPC
-        from ultralytics import YOLO as YOLONet
+        # from ultralytics import YOLO as YOLONet
         LicensePlateCatcher = LPC
-        YOLO = YOLONet
+        # YOLO = YOLONet
     return LicensePlateCatcher, YOLO
 
 class ParkingService:
@@ -78,17 +78,22 @@ class ParkingService:
 
             if img is None:
                 return None
-
             result_lpr = self.lpr(img)
+            print(f"LPR Raw Result: {result_lpr}")
             if result_lpr:
-                if isinstance(result_lpr[0], list):
-                    plate_text = result_lpr[0][0] if len(result_lpr[0]) > 0 else None
-                elif isinstance(result_lpr[0], dict):
-                    plate_text = result_lpr[0].get('license', None)
-                else:
-                    plate_text = str(result_lpr[0])
-                if plate_text and plate_text != "UNKNOWN":
-                    return plate_text
+                if isinstance(result_lpr, list) and len(result_lpr) > 0:
+                    res = result_lpr[0]
+                    print(f"LPR First Result: {res}")
+                    if isinstance(res, (list, tuple)) and len(res) > 0:
+                        plate_text = res[0]
+                    elif isinstance(res, dict):
+                        plate_text = res.get('license', None)
+                    else:
+                        plate_text = str(res)
+                    
+                    print(f"Recognized Plate Text: {plate_text}")
+                    if plate_text and plate_text != "UNKNOWN":
+                        return plate_text
 
             return None
 
@@ -205,18 +210,52 @@ class ParkingService:
         if not plate_number:
             return {"success": False, "message": "车牌号不能为空"}, 400
 
+        # 检查该车辆是否已经在场内
+        active_order = ParkingOrder.query.filter_by(
+            plate_number=plate_number, status=1
+        ).first()
+        if active_order:
+            return {"success": False, "message": "该车辆已在场内，无法重复入场"}, 400
+
         order = ParkingOrder.query.filter_by(
             plate_number=plate_number, status=0
         ).first()
-        if not order:
-            return {"success": False, "message": "未找到有效预约订单"}, 404
+        
+        if order:
+            order.status = 1
+            order.in_time = datetime.utcnow()
 
-        order.status = 1
-        order.in_time = datetime.utcnow()
-
-        spot = ParkingSpot.query.get(order.spot_id)
-        spot.status = 1
-        spot.current_plate = plate_number
+            spot = ParkingSpot.query.get(order.spot_id)
+            spot.status = 1
+            spot.current_plate = plate_number
+        else:
+            # 没有预约订单，自动绑定访客或该车牌对应的用户进场
+            spot = ParkingSpot.query.filter_by(status=0).first()
+            if not spot:
+                return {"success": False, "message": "当前停车场已满，无可用车位"}, 400
+                
+            from app.models.car import Car
+            car = Car.query.filter_by(plate_number=plate_number).first()
+            if car:
+                user_id = car.user_id
+            else:
+                guest = SysUser.query.filter_by(user_no='guest').first()
+                if not guest:
+                    return {"success": False, "message": "系统错误，访客用户不存在"}, 500
+                user_id = guest.user_id
+                
+            order = ParkingOrder(
+                order_no=ParkingOrder.generate_order_no(),
+                user_id=user_id,
+                spot_id=spot.spot_id,
+                plate_number=plate_number,
+                status=1,
+                in_time=datetime.utcnow()
+            )
+            db.session.add(order)
+            
+            spot.status = 1
+            spot.current_plate = plate_number
 
         db.session.commit()
         ParkingService._broadcast_spot_update(
