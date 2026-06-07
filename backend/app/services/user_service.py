@@ -56,18 +56,28 @@ class UserService:
         }, 200
 
     @staticmethod
-    def get_users_list(page=1, per_page=20):
+    def get_users_list(page=1, per_page=20, query_keyword=None):
         """
         获取系统的用户列表逻辑，支持分页查询，按创建时间降序排序。
 
         Args:
             page (int, optional): 当前页码. Defaults to 1.
             per_page (int, optional): 每页显示的记录数. Defaults to 20.
+            query_keyword (str, optional): 搜索关键字. Defaults to None.
 
         Returns:
             tuple: 包含分页结果信息的响应字典 (dict) 和 HTTP 状态码 (int) 的元组
         """
-        pagination = SysUser.query.order_by(SysUser.created_at.desc()).paginate(
+        from app.extensions import db
+        query = SysUser.query.filter_by(is_deleted=False)
+        
+        if query_keyword:
+            query = query.filter(db.or_(
+                SysUser.username.ilike(f'%{query_keyword}%'),
+                SysUser.user_no.ilike(f'%{query_keyword}%')
+            ))
+            
+        pagination = query.order_by(SysUser.created_at.desc()).paginate(
             page=page, per_page=per_page, error_out=False
         )
         return {
@@ -114,3 +124,30 @@ class UserService:
             "message": "用户信息更新成功",
             "data": user.to_dict(),
         }, 200
+
+    @staticmethod
+    @handle_service_exception(message_prefix="用户删除失败")
+    def delete_user(user_id):
+        """
+        软删除指定用户。修改 user_no 以释放该账号供再次注册。
+        
+        Args:
+            user_id (int): 待删除的用户 ID
+            
+        Returns:
+            tuple: 包含响应字典和 HTTP 状态码的元组
+        """
+        user = SysUser.query.get(user_id)
+        if not user:
+            return {"success": False, "message": "用户不存在"}, 404
+            
+        if user.user_no == 'admin' or user.role == 3:
+            return {"success": False, "message": "系统管理员账号禁止删除"}, 403
+            
+        import time
+        user.is_deleted = True
+        user.is_active = False
+        user.user_no = f"{user.user_no}_deleted_{int(time.time())}"
+        
+        db.session.commit()
+        return {"success": True, "message": "用户注销成功"}, 200

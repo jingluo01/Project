@@ -12,7 +12,8 @@ def create_order(current_user):
     result, status_code = OrderService.create_order(
         current_user,
         data.get('spot_id'),
-        data.get('plate_number')
+        data.get('plate_number'),
+        data.get('reserve_time')
     )
     return jsonify(result), status_code
 
@@ -73,4 +74,12 @@ def apply_refund(current_user):
     """申请退款"""
     data = request.get_json()
     result, status_code = OrderService.apply_refund(current_user, data.get('order_id'))
+    return jsonify(result), status_code
+
+@order_bp.route('/refund/reject', methods=['POST'])
+@token_required
+def reject_refund(current_user):
+    """拒绝退款"""
+    data = request.get_json()
+    result, status_code = OrderService.reject_refund(current_user, data.get('order_id'))
     return jsonify(result), status_code

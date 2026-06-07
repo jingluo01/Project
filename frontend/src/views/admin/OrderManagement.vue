@@ -121,16 +121,29 @@
               @click="handleForceClose(row)"
             >结束</el-button>
             <el-button 
-              v-if="row.status === 3 || row.status === 7" 
+              v-if="row.status === 3" 
               size="small" 
               type="danger" 
               link 
               icon="RefreshLeft"
               @click="handleRefund(row)"
-            >
-              {{ row.status === 7 ? '处理退款' : '退款' }}
-              <el-badge v-if="row.status === 7" is-dot class="ml-1" type="danger" />
-            </el-button>
+            >退款</el-button>
+            <el-button 
+              v-if="row.status === 7" 
+              size="small" 
+              type="success" 
+              link 
+              icon="Check"
+              @click="handleRefund(row)"
+            >同意退款</el-button>
+            <el-button 
+              v-if="row.status === 7" 
+              size="small" 
+              type="danger" 
+              link 
+              icon="Close"
+              @click="handleRejectRefund(row)"
+            >拒绝退款</el-button>
           </div>
         </template>
       </el-table-column>
@@ -232,11 +245,23 @@
             @click="handleForceClose(currentOrder)"
           >强制释放车位</el-button>
           <el-button 
-            v-if="currentOrder.status === 3 || currentOrder.status === 7" 
+            v-if="currentOrder.status === 3" 
             type="danger" 
             style="flex: 1"
             @click="handleRefund(currentOrder)"
-          >{{ currentOrder.status === 7 ? '批准退款' : '立即退款' }}</el-button>
+          >立即退款</el-button>
+          <template v-if="currentOrder.status === 7">
+            <el-button 
+              type="success" 
+              style="flex: 1"
+              @click="handleRefund(currentOrder)"
+            >同意退款</el-button>
+            <el-button 
+              type="danger" 
+              style="flex: 1"
+              @click="handleRejectRefund(currentOrder)"
+            >拒绝退款</el-button>
+          </template>
         </div>
       </div>
     </el-drawer>
@@ -244,13 +269,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import * as XLSX from 'xlsx'
 import { Download, ArrowDown } from '@element-plus/icons-vue'
 import { getAllOrders, forceExitOrder } from '@/api/admin'
-import { refundOrder, cancelOrder } from '@/api/order'
+import { refundOrder, cancelOrder, rejectRefund } from '@/api/order'
 import { formatCurrency, formatDate, getOrderStatusText, getOrderStatusType } from '@/utils/format'
 import { ElMessageBox, ElMessage } from 'element-plus'
+
+const handleOrderRefresh = () => {
+  fetchOrders()
+}
+
+onMounted(() => {
+  fetchOrders()
+  window.addEventListener('admin_order_refresh', handleOrderRefresh)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('admin_order_refresh', handleOrderRefresh)
+})
 
 const loading = ref(false)
 const orders = ref([])
@@ -392,10 +430,30 @@ const handleForceCancel = (order) => {
 }
 
 const handleRefund = (order) => {
-  ElMessageBox.confirm('确定要为该笔金额执行全额退款吗？资金将充值回用户余额。', '退款确认').then(async () => {
+  const isAlipay = order.pay_way === 2
+  const confirmMsg = isAlipay 
+    ? '确认执行退款吗？退款金额将通过支付宝原路退回。'
+    : '确认执行退款吗？资金将充值回用户余额。'
+    
+  ElMessageBox.confirm(confirmMsg, '退款确认').then(async () => {
     try {
       await refundOrder({ order_id: order.order_id })
-      ElMessage.success('退款成功，资金已原路返还至用户余额')
+      ElMessage.success(isAlipay ? '退款成功，资金已通过支付宝原路退回' : '退款成功，资金已原路返还至用户余额')
+      showDetail.value = false
+      fetchOrders()
+    } catch (err) {}
+  })
+}
+
+const handleRejectRefund = (order) => {
+  ElMessageBox.confirm('确定要拒绝该订单的退款申请吗？订单状态将恢复为已结算。', '拒绝退款', {
+    confirmButtonText: '确定拒绝',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await rejectRefund({ order_id: order.order_id })
+      ElMessage.success('已拒绝退款申请')
       showDetail.value = false
       fetchOrders()
     } catch (err) {}

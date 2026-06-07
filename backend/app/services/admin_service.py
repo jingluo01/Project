@@ -44,12 +44,16 @@ class AdminService:
         elif today_revenue > 0:
             growth = 100.0
 
-        active_users = (
-            db.session.query(func.count(func.distinct(ParkingOrder.user_id)))
-            .filter(ParkingOrder.status == 1)
-            .scalar()
-            or 0
-        )
+        import app.extensions
+        if app.extensions.redis_client:
+            active_users = len(app.extensions.redis_client.keys("user_active:*"))
+        else:
+            active_users = (
+                db.session.query(func.count(func.distinct(ParkingOrder.user_id)))
+                .filter(ParkingOrder.status.in_([0, 1, 2]))
+                .scalar()
+                or 0
+            )
 
         current_orders = ParkingOrder.query.filter(
             ParkingOrder.status.in_([0, 1])
@@ -151,6 +155,10 @@ class AdminService:
                 "RESERVATION_TIMEOUT_MINUTES",
                 app_config.get("RESERVATION_TIMEOUT_MINUTES", 30),
             ),
+            "max_reservation_hours": fetch_config(
+                "MAX_RESERVATION_HOURS",
+                app_config.get("MAX_RESERVATION_HOURS", 3),
+            ),
             "fee_multiplier": fetch_config(
                 "FEE_MULTIPLIER", app_config.get("FEE_MULTIPLIER", 10.0)
             ),
@@ -196,6 +204,11 @@ class AdminService:
             if "reservation_timeout" in data:
                 SysConfig.set_value(
                     "RESERVATION_TIMEOUT_MINUTES", data["reservation_timeout"]
+                )
+
+            if "max_reservation_hours" in data:
+                SysConfig.set_value(
+                    "MAX_RESERVATION_HOURS", data["max_reservation_hours"]
                 )
 
             if "fee_multiplier" in data:

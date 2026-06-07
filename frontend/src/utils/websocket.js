@@ -1,6 +1,7 @@
 import { io } from 'socket.io-client'
 import { useParkingStore } from '@/stores/parking'
 import { useUserStore } from '@/stores/user'
+import { useOrderStore } from '@/stores/order'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import router from '@/router'
 
@@ -11,7 +12,8 @@ export const initWebSocket = () => {
 
     const token = localStorage.getItem('token')
 
-    socket = io({
+    const targetUrl = import.meta.env.DEV ? 'http://127.0.0.1:5000' : undefined
+    socket = io(targetUrl, {
         path: '/socket.io',
         autoConnect: true,
         auth: {
@@ -31,6 +33,21 @@ export const initWebSocket = () => {
         console.log('Spot status update:', data)
         const parkingStore = useParkingStore()
         parkingStore.updateSpotStatus(data.spot_id, data.status, data.current_plate)
+    })
+
+    socket.on('order_status_update', (data) => {
+        console.log('Order status update:', data)
+        const userStore = useUserStore()
+        const orderStore = useOrderStore()
+        
+        // 如果是普通用户，且更新的订单是自己的，刷新用户个人的订单列表与资产
+        if (data.user_id === userStore.user?.user_id) {
+            orderStore.fetchOrders()
+            userStore.fetchProfile() // 更新可能变动的钱包和信用分
+        }
+        
+        // 派发全局事件供后台管理大盘或订单列表刷新
+        window.dispatchEvent(new CustomEvent('admin_order_refresh', { detail: data }))
     })
 
     // 监听实时踢出事件

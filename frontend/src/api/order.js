@@ -32,3 +32,7 @@ export const refundOrder = (data) => {
 export const applyRefund = (data) => {
     return request.post('/order/refund/apply', data)
 }
+
+export const rejectRefund = (data) => {
+    return request.post('/order/refund/reject', data)
+}

@@ -55,6 +55,7 @@ class Config:
     PERFECT_CREDIT_SCORE = 100  # 完美信用分
     FEE_MULTIPLIER = 1.0  # 费用倍率因子 (恢复正常计费)
     RESERVATION_TIMEOUT_MINUTES = 180 # 预约超时时间(分钟)，设为3小时
+    MAX_RESERVATION_HOURS = 3  # 最长提前预约时间(小时)
     VIOLATION_FEE = 5.00 # 预约违约金(元)
     
     # Role-based Discount

@@ -70,6 +70,9 @@ def token_required(f):
                     'message': '您的账号已在别处登陆，请重新登陆',
                     'kickout': True
                 }), 401
+            # 记录普通用户的活跃状态 (不包含管理员 role=3, 5分钟内有请求即视为活跃)
+            if payload.get('role') != 3:
+                app.extensions.redis_client.setex(f"user_active:{user_id}", 300, "1")
         
         # Get current user
         current_user = SysUser.query.get(user_id)

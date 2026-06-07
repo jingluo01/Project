@@ -49,9 +49,14 @@
                   <div class="item-desc">低于该分数的用户将失去车位预约权限</div>
                 </el-form-item>
                 <el-form-item label="自动取消预约时限" class="compact-item full-width">
-                  <el-input-number v-model="form.reservation_timeout" :min="5" :max="1440" :step="5" />
+                  <el-input-number v-model="form.reservation_timeout" :min="0" :max="1440" />
                   <span class="unit">分钟</span>
                   <div class="item-desc">预约成功后未在此时限内入场，系统将自动取消订单</div>
+                </el-form-item>
+                <el-form-item label="最长提前预约时间" class="compact-item full-width">
+                  <el-input-number v-model="form.max_reservation_hours" :min="1" :max="168" />
+                  <span class="unit">小时</span>
+                  <div class="item-desc">允许用户最长能提前预定多少小时之后的车位</div>
                 </el-form-item>
               </div>
             </div>
@@ -141,6 +146,7 @@ const form = reactive({
     roles: { '1': 0.9, '2': 0.8 },
     violation_fee: 5.0,
     reservation_timeout: 30,
+    max_reservation_hours: 3,
     fee_multiplier: 10.0,
     payment_timeout: 24,
     penalty_timeout: 30,

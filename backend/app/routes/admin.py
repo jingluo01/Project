@@ -38,7 +38,16 @@ def get_users(current_user):
     """获取用户列表"""
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    result, status_code = UserService.get_users_list(page, per_page)
+    query_keyword = request.args.get('query')
+    result, status_code = UserService.get_users_list(page, per_page, query_keyword=query_keyword)
+    return jsonify(result), status_code
+
+@admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
+@token_required
+@admin_required
+def delete_user(current_user, user_id):
+    """软删除注销用户"""
+    result, status_code = UserService.delete_user(user_id)
     return jsonify(result), status_code
 
 @admin_bp.route('/user/update', methods=['POST'])

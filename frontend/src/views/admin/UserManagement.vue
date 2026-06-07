@@ -15,7 +15,7 @@
           @clear="fetchUsers"
           @keyup.enter="fetchUsers"
         />
-        <el-button type="primary" icon="Refresh" @click="fetchUsers">刷新列表</el-button>
+        <el-button type="primary" icon="Search" @click="fetchUsers">搜索</el-button>
       </div>
     </div>
 
@@ -198,7 +198,7 @@
 
 <script setup>
 import { ref, onMounted, watch, onUnmounted, computed } from 'vue'
-import { getUsers, updateUser, getAdminConfig } from '@/api/admin'
+import { getUsers, updateUser, getAdminConfig, deleteUser } from '@/api/admin'
 import { formatCurrency } from '@/utils/format'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { User, Check, Money, Lock, Delete, InfoFilled } from '@element-plus/icons-vue'
@@ -321,7 +321,7 @@ onUnmounted(() => {
 const fetchUsers = async () => {
   loading.value = true
   try {
-    const res = await getUsers(page.value, pageSize.value)
+    const res = await getUsers(page.value, pageSize.value, searchQuery.value)
     // 过滤掉系统预留的 'guest' 账户以及 role=0 的外部访客，这些不属于校内人员管理范畴
     users.value = res.data.users.filter(u => u.user_no !== 'guest' && u.role !== 0)
     total.value = res.data.total
@@ -355,8 +355,16 @@ const handleResetPwd = async (user) => {
 
 const handleDelete = async (user) => {
   try {
-    ElMessage.warning('演示系统暂不支持物理删除')
-  } catch (err) {}
+    const res = await deleteUser(user.user_id)
+    if (res.success) {
+      ElMessage.success('用户账号已成功注销')
+      fetchUsers()
+    } else {
+      ElMessage.error(res.message || '注销失败')
+    }
+  } catch (err) {
+    ElMessage.error('注销请求异常')
+  }
 }
 
 const openEditDialog = (user) => {

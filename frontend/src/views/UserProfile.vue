@@ -12,7 +12,6 @@
         <div class="card info-card">
           <div class="card-header">
             <h3>个人信息</h3>
-            <el-button type="primary" size="small" @click="showRechargeDialog = true">充值余额</el-button>
           </div>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="学号/工号">{{ userStore.user?.user_no }}</el-descriptions-item>
@@ -24,7 +23,10 @@
               </el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="账户余额">
-              <span class="balance-text">{{ formatCurrency(userStore.balance) }}</span>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="balance-text">{{ formatCurrency(userStore.balance) }}</span>
+                <el-button type="primary" size="small" @click="showRechargeDialog = true">充值余额</el-button>
+              </div>
             </el-descriptions-item>
           </el-descriptions>
         </div>

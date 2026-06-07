@@ -2,7 +2,7 @@
 订单服务模块，提供停车订单的创建、支付、取消、查询、违约处理及退款等业务逻辑。
 """
 
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from flask import current_app
 from app.extensions import db, socketio
@@ -18,7 +18,7 @@ class OrderService:
 
     @staticmethod
     @handle_service_exception(message_prefix="预约失败")
-    def create_order(user, spot_id, plate_number):
+    def create_order(user, spot_id, plate_number, reserve_time_str=None):
         """
         处理创建预约订单业务逻辑。包含信用分校验、活跃订单上限检查、车辆唯一性及绑定验证、车位冲突检查，并使用悲观锁锁定车位。
 
@@ -26,6 +26,7 @@ class OrderService:
             user (SysUser): 当前用户对象
             spot_id (int): 待预约的车位 ID
             plate_number (str): 预约的车辆车牌号
+            reserve_time_str (str, optional): 预约到达时间
 
         Returns:
             tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
@@ -34,6 +35,31 @@ class OrderService:
             return {"success": False, "message": "车位ID和车牌号不能为空"}, 400
 
         from app.models.config import SysConfig
+
+        # 解析与校验预约时间
+        if reserve_time_str:
+            try:
+                if reserve_time_str.endswith("Z"):
+                    reserve_time_str = reserve_time_str[:-1] + "+00:00"
+                reserve_time = datetime.fromisoformat(reserve_time_str)
+                if reserve_time.tzinfo is not None:
+                    reserve_time = reserve_time.astimezone(timezone.utc).replace(tzinfo=None)
+            except Exception:
+                return {"success": False, "message": "预约时间格式错误"}, 400
+        else:
+            reserve_time = datetime.utcnow()
+
+        # 校验预约到达时间是否合法（不能早于当前时间，不能晚于当前时间 + MAX_RESERVATION_HOURS）
+        now = datetime.utcnow()
+        max_hours = float(
+            SysConfig.get_value(
+                "MAX_RESERVATION_HOURS", current_app.config.get("MAX_RESERVATION_HOURS", 3)
+            )
+        )
+        if reserve_time < now - timedelta(minutes=5):
+            return {"success": False, "message": "预约到达时间不能早于当前时间"}, 400
+        if reserve_time > now + timedelta(hours=max_hours) + timedelta(minutes=5):
+            return {"success": False, "message": f"最长只能提前 {int(max_hours)} 小时预约车位"}, 400
 
         min_score = int(
             SysConfig.get_value(
@@ -99,7 +125,7 @@ class OrderService:
             spot_id=spot_id,
             plate_number=plate_number,
             status=0,
-            reserve_time=datetime.utcnow(),
+            reserve_time=reserve_time,
         )
         db.session.add(new_order)
         db.session.commit()
@@ -109,6 +135,7 @@ class OrderService:
         ParkingService._broadcast_spot_update(
             spot.spot_id, spot.zone_id, 3, plate_number
         )
+        OrderService._broadcast_order_update(new_order)
 
         return {
             "success": True,
@@ -152,6 +179,8 @@ class OrderService:
         order.pay_time = datetime.utcnow()
         order.pay_way = pay_way
         db.session.commit()
+        
+        OrderService._broadcast_order_update(order)
 
         return {"success": True, "message": "支付成功", "data": order.to_dict()}, 200
 
@@ -191,6 +220,8 @@ class OrderService:
             from app.services.parking_service import ParkingService
 
             ParkingService._broadcast_spot_update(spot.spot_id, spot.zone_id, 0, None)
+            
+        OrderService._broadcast_order_update(order)
 
         return {"success": True, "message": "取消成功", "data": order.to_dict()}, 200
 
@@ -346,6 +377,8 @@ class OrderService:
         user.credit_score = max(0, user.credit_score - penalty)
 
         db.session.commit()
+        
+        OrderService._broadcast_order_update(order)
 
         msg = f"订单 {order.order_no} ({violation_type}) 违约处理成功，扣除信用分 {penalty}"
         return {"success": True, "message": msg, "data": order.to_dict()}, 200
@@ -430,8 +463,62 @@ class OrderService:
 
         order.status = 7  # 7-退款申请中
         db.session.commit()
+        
+        OrderService._broadcast_order_update(order)
+
         return {
             "success": True,
             "message": "退款申请已提交，等待审核",
+            "data": order.to_dict(),
+        }, 200
+
+    @staticmethod
+    def _broadcast_order_update(order):
+        """广播订单状态更新事件"""
+        from app.extensions import socketio
+        try:
+            socketio.emit(
+                "order_status_update",
+                {
+                    "order_id": order.order_id,
+                    "status": order.status,
+                    "user_id": order.user_id,
+                    "plate_number": order.plate_number
+                },
+            )
+        except Exception as e:
+            print(f"Error broadcasting order update: {e}")
+
+    @staticmethod
+    @handle_service_exception(message_prefix="拒绝退款失败")
+    def reject_refund(user, order_id):
+        """
+        处理管理员拒绝退款业务逻辑。
+
+        Args:
+            user (SysUser): 操作用户对象 (需要是管理员)
+            order_id (int): 订单 ID
+
+        Returns:
+            tuple: 包含响应字典 (dict) 和 HTTP 状态码 (int) 的元组
+        """
+        if not order_id:
+            return {"success": False, "message": "订单ID不能为空"}, 400
+            
+        if user.role != 3:
+            return {"success": False, "message": "权限不足，仅管理员可拒绝退款"}, 403
+
+        order = ParkingOrder.query.get(order_id)
+        if not order:
+            return {"success": False, "message": "订单不存在"}, 404
+
+        if order.status != 7:
+            return {"success": False, "message": "该订单当前状态不在退款申请中"}, 400
+
+        order.status = 3  # 恢复为已完成/已结算状态
+        db.session.commit()
+        return {
+            "success": True,
+            "message": "已拒绝退款，订单状态恢复正常",
             "data": order.to_dict(),
         }, 200

@@ -8,12 +8,16 @@ export const getAdminConfig = () => {
     return request.get('/admin/config')
 }
 
-export const getUsers = (page, perPage) => {
-    return request.get('/admin/users', { params: { page, per_page: perPage } })
+export const getUsers = (page, perPage, query = '') => {
+    return request.get('/admin/users', { params: { page, per_page: perPage, query } })
 }
 
 export const updateUser = (data) => {
     return request.post('/admin/user/update', data)
+}
+
+export const deleteUser = (userId) => {
+    return request.delete(`/admin/users/${userId}`)
 }
 
 export const updateParking = (data) => {

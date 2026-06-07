@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta
 from app.models.order import ParkingOrder
 from app.services.order_service import OrderService
+from app.models.config import SysConfig
 
 def check_timeout_orders(app):
     """检查超时未支付订单"""
     with app.app_context():
-        timeout_hours = app.config['PAYMENT_TIMEOUT_HOURS']
+        base_timeout_hours = app.config.get('PAYMENT_TIMEOUT_HOURS', 24)
+        timeout_hours = int(SysConfig.get_value("PAYMENT_TIMEOUT_HOURS", base_timeout_hours))
         
-        # 查找待支付且超过24小时的订单
+        # 查找待支付且超时的订单
         timeout_threshold = datetime.utcnow() - timedelta(hours=timeout_hours)
         
         timeout_orders = ParkingOrder.query.filter(
@@ -26,9 +28,10 @@ def check_timeout_orders(app):
 def check_reservation_timeout(app):
     """检查预约超时未入场订单"""
     with app.app_context():
-        timeout_minutes = app.config.get('RESERVATION_TIMEOUT_MINUTES', 30)
+        base_timeout_minutes = app.config.get('RESERVATION_TIMEOUT_MINUTES', 180)
+        timeout_minutes = int(SysConfig.get_value("RESERVATION_TIMEOUT_MINUTES", base_timeout_minutes))
         
-        # 查找已预约且超过30分钟未入场的订单
+        # 查找已预约且超时的订单
         threshold = datetime.utcnow() - timedelta(minutes=timeout_minutes)
         
         timeout_reservations = ParkingOrder.query.filter(
@@ -54,21 +57,21 @@ def start_scheduler(app):
     
     scheduler = BackgroundScheduler()
     
-    # 待支付超时检查 (正式频率，每小时检查一次)
+    # 待支付超时检查 (正式频率，每1分钟检查一次)
     scheduler.add_job(
         func=lambda: check_timeout_orders(app),
         trigger='interval',
-        hours=1,
+        minutes=1,
         id='check_payment_timeout'
     )
     
-    # 预约超时检查 (每小时)
+    # 预约超时检查 (每1分钟检查一次)
     scheduler.add_job(
         func=lambda: check_reservation_timeout(app),
         trigger='interval',
-        hours=1,
+        minutes=1,
         id='check_reservation_timeout'
     )
     
     scheduler.start()
-    print('定时任务已启动 (正式模式: 1小时频率)')
+    print('定时任务已启动 (高频模式: 1分钟频率)')

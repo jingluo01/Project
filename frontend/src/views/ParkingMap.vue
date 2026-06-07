@@ -10,10 +10,19 @@
         <el-button 
           type="primary" 
           icon="Camera"
-          @click="openPlateRecognition"
+          @click="openPlateRecognition('enter')"
           class="plate-rec-btn"
         >
-          车牌识别
+          入场检测
+        </el-button>
+        <el-button 
+          type="warning" 
+          icon="Camera"
+          @click="openPlateRecognition('exit')"
+          class="plate-rec-btn"
+          style="margin-left: 10px;"
+        >
+          离场检测
         </el-button>
         
         <div class="credit-score">
@@ -37,6 +46,7 @@
           <span>余额: {{ formatCurrency(userStore.balance) }}</span>
         </div>
         
+        <el-button v-if="userStore.isAdmin" type="danger" @click="router.push('/admin/dashboard')">管理后台</el-button>
         <el-button @click="router.push('/profile')">个人中心</el-button>
         <el-button @click="handleLogout">退出</el-button>
       </div>
@@ -145,13 +155,20 @@
               }}
               <span class="plate-text">{{ order.plate_number }}</span>
             </div>
+            <div v-if="order.status === 0" class="order-subtitle" style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+              预计抵达时间: {{ formatLocalTime(order.reserve_time) }}
+            </div>
             
             <div class="time-box">
               <div v-if="order.status === 1" class="order-time-vibrant">
                 <span class="digit">{{ formatDuration(orderDurations[order.order_id] || 0) }}</span>
               </div>
+              <div v-else-if="order.status === 0" class="order-time-vibrant text-warning-vibrant" style="color: #e6a23c;">
+                <div class="countdown-sub-title" style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">最晚入场倒计时</div>
+                <span class="digit">{{ formatCountdown(orderDurations[order.order_id] || 0) }}</span>
+              </div>
               <div v-else class="order-time-static">
-                {{ order.status === 0 ? '请按时入场' : '请及时支付' }}
+                请及时支付
               </div>
             </div>
 
@@ -223,9 +240,24 @@
             </el-select>
           </el-form-item>
           
+          <el-form-item label="预计多久后到达？" prop="arrival_delay">
+            <el-input-number 
+              v-model="reservationForm.arrival_delay" 
+              :min="0" 
+              :max="maxReservationMinutes" 
+              :step="5"
+              size="large"
+              style="width: 100%"
+            />
+            <div class="arrival-tip-desc" style="margin-top: 8px; font-size: 13px; color: #64748b; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span>预计于 <strong style="color: #3b82f6; font-size: 14px;">{{ targetArrivalDesc }}</strong> 左右抵达</span>
+              <span style="color: #f59e0b; font-weight: bold;">(最长支持提前 {{ maxReservationHours }} 小时)</span>
+            </div>
+          </el-form-item>
+          
           <el-alert
             title="温馨提示"
-            :description="`预约后请在 ${reservationMinutes} 分钟内到达，否则将自动取消并扣除信用分`"
+            :description="`预约成功后，最晚请在预约到达时间后的 ${reservationMinutes} 分钟内扫码入场，否则系统将自动取消并扣除信用分`"
             type="info"
             :closable="false"
             show-icon
@@ -349,6 +381,8 @@
       title="支付宝扫码支付" 
       width="420px"
       :close-on-click-modal="false"
+      :close-on-press-escape="!currentPaymentOrder?.is_guest"
+      :show-close="!currentPaymentOrder?.is_guest"
       @close="stopPolling"
     >
       <div class="qrcode-dialog-content">
@@ -404,7 +438,11 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="showQRCodeDialog = false" size="large">取消支付</el-button>
+          <el-button v-if="!currentPaymentOrder?.is_guest" @click="showQRCodeDialog = false" size="large">取消支付</el-button>
+          <div v-else class="visitor-pay-tip">
+            <el-icon class="mr-1" color="#e6a23c"><Warning /></el-icon>
+            <span style="color: #e6a23c; font-size: 13px; font-weight: bold;">访客车辆须支付后方可开启闸机放行</span>
+          </div>
         </div>
       </template>
     </el-dialog>
@@ -412,8 +450,8 @@
     <!-- 车牌识别对话框 -->
     <el-dialog 
       v-model="showPlateDialog" 
-      title="车牌识别" 
-      width="520px"
+      :title="lprMode === 'enter' ? '入场车牌识别' : '离场车牌检测'" 
+      width="400px"
       :close-on-click-modal="false"
     >
       <div class="plate-dialog-content">
@@ -534,7 +572,7 @@ const activeZone = ref(null)
 const showReservationDialog = ref(false)
 const showPaymentDialog = ref(false)
 const selectedSpot = ref(null)
-const reservationForm = reactive({ plate_number: '' })
+const reservationForm = reactive({ plate_number: '', arrival_delay: 15 })
 const reservationFormRef = ref(null)
 const reserving = ref(false)
 const paying = ref(false)
@@ -602,6 +640,7 @@ let pollingTimer = null
 
 // 车牌识别相关
 const showPlateDialog = ref(false)
+const lprMode = ref('enter')
 const fileInput = ref(null)
 const selectedImage = ref('')
 const selectedFile = ref(null)
@@ -610,8 +649,36 @@ const recognizing = ref(false)
 const recognizedPlate = ref('')
 
 // 系统配置
-const sysConfig = ref({ reservation_timeout: 30, fee_multiplier: 10.0 })
+const sysConfig = ref({ reservation_timeout: 30, fee_multiplier: 10.0, max_reservation_hours: 3 })
 const reservationMinutes = computed(() => sysConfig.value.reservation_timeout)
+const maxReservationHours = computed(() => sysConfig.value.max_reservation_hours || 3)
+const maxReservationMinutes = computed(() => maxReservationHours.value * 60)
+
+const targetArrivalDesc = computed(() => {
+  const delay = reservationForm.arrival_delay || 0
+  if (delay === 0) return '立即'
+  const target = new Date(Date.now() + delay * 60 * 1000)
+  return target.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+})
+
+const formatLocalTime = (utcTimeStr) => {
+  if (!utcTimeStr) return ''
+  const cleanStr = utcTimeStr.endsWith('Z') ? utcTimeStr : utcTimeStr + 'Z'
+  return new Date(cleanStr).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+const formatCountdown = (totalSeconds) => {
+  if (totalSeconds <= 0) return '已超时'
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  
+  const pad = (num) => String(num).padStart(2, '0')
+  if (hours > 0) {
+    return `${hours}:${pad(minutes)}:${pad(seconds)}`
+  }
+  return `${pad(minutes)}:${pad(seconds)}`
+}
 
 // 键盘快捷键支持
 const handleKeyPress = (e) => {
@@ -715,6 +782,7 @@ const handleSpotClick = async (spot) => {
   const availableCar = userStore.cars.find(car => orderStore.getCarStatus(car.plate_number) === null)
   if (availableCar) {
     reservationForm.plate_number = availableCar.plate_number
+    reservationForm.arrival_delay = 15
     showReservationDialog.value = true
   } else {
     ElMessage.warning('您的所有车辆都有进行中的订单，无法继续预约')
@@ -909,12 +977,20 @@ const handleReservation = async () => {
     ElMessage.warning('请选择车辆')
     return
   }
+  if (reservationForm.arrival_delay === undefined || reservationForm.arrival_delay === null) {
+    ElMessage.warning('请输入预计抵达延时')
+    return
+  }
   
   reserving.value = true
   try {
+    const delay = reservationForm.arrival_delay || 0
+    const reserveTime = new Date(Date.now() + delay * 60 * 1000)
+
     await orderStore.createOrder({
       spot_id: selectedSpot.value.spot_id,
-      plate_number: reservationForm.plate_number
+      plate_number: reservationForm.plate_number,
+      reserve_time: reserveTime.toISOString()
     })
     
     ElMessage.success('预约成功')
@@ -940,6 +1016,12 @@ const updateOrderDuration = () => {
       const inTime = new Date(inTimeStr)
       // 使用 Math.max(0, ...) 防止服务器时间微领先于本地时间时显示负数
       orderDurations[order.order_id] = Math.max(0, Math.floor((now - inTime) / 1000))
+    } else if (order.status === 0) {
+      const reserveTimeStr = order.reserve_time.endsWith('Z') ? order.reserve_time : order.reserve_time + 'Z'
+      const reserveTime = new Date(reserveTimeStr)
+      const timeoutMinutes = sysConfig.value.reservation_timeout ?? 30
+      const deadline = new Date(reserveTime.getTime() + timeoutMinutes * 60 * 1000)
+      orderDurations[order.order_id] = Math.max(0, Math.floor((deadline - now) / 1000))
     }
   })
 }
@@ -1064,40 +1146,79 @@ const confirmPlate = async () => {
   
   showPlateDialog.value = false
   
-  // 查找匹配的订单（预约中或停车中的订单）
-  const matchedOrder = orderStore.visibleOrders.find(order => 
-    order.plate_number === recognizedPlate.value
-  )
-  
-  if (matchedOrder) {
-    // 有匹配的订单，显示订单信息
-    const statusText = matchedOrder.status === 0 ? '预约中' : 
-                       matchedOrder.status === 1 ? '停车中' : '订单进行中'
-    ElMessage.success(`识别成功！找到匹配订单：${recognizedPlate.value} (${statusText})`)
+  if (lprMode.value === 'enter') {
+    // 查找匹配的订单（预约中或停车中的订单）
+    const matchedOrder = orderStore.visibleOrders.find(order => 
+      order.plate_number === recognizedPlate.value
+    )
     
-    // 如果是预约中状态，可以提示快速入场
-    if (matchedOrder.status === 0) {
-      handleStartParking(matchedOrder)
+    if (matchedOrder) {
+      // 有匹配的订单，显示订单信息
+      const statusText = matchedOrder.status === 0 ? '预约中' : 
+                         matchedOrder.status === 1 ? '停车中' : '订单进行中'
+      ElMessage.success(`识别成功！找到匹配订单：${recognizedPlate.value} (${statusText})`)
+      
+      // 如果是预约中状态，可以提示快速入场
+      if (matchedOrder.status === 0) {
+        handleStartParking(matchedOrder)
+      }
+    } else {
+      // 调用车辆入场接口
+      try {
+        const res = await vehicleEnter({ plate_number: recognizedPlate.value })
+        if (res.success && res.data) {
+          if (res.data.is_guest === false) {
+            ElMessage.success(`识别入场成功！已匹配绑定用户 [${res.data.username}]：${recognizedPlate.value}`)
+          } else {
+            ElMessage.success(`识别入场成功！该车牌未绑定账号，已作为访客入场：${recognizedPlate.value}`)
+          }
+        } else {
+          ElMessage.success(`入场成功：${recognizedPlate.value}`)
+        }
+        await parkingStore.fetchSpots(activeZone.value)
+        await orderStore.fetchOrders()
+      } catch (error) {
+        console.error('Vehicle enter failed:', error)
+        ElMessage.error(error.response?.data?.message || '入场失败，请重试')
+      }
     }
   } else {
-    // 没有匹配的订单，绑定为访客用户
-    ElMessage.info(`未找到 ${recognizedPlate.value} 的订单，将作为访客入场`)
-    
-    // 调用车辆入场接口
+    // 离场检测逻辑
+    ElMessage.info(`正在执行离场检测: ${recognizedPlate.value}`)
     try {
-      await vehicleEnter({ plate_number: recognizedPlate.value })
-      ElMessage.success(`访客入场成功：${recognizedPlate.value}`)
+      const res = await vehicleExit({
+        plate_number: recognizedPlate.value,
+        auto_pay: false // 强制要求用户手动扫码支付，防止代扣
+      })
+      
+      const order = res.data
+      if (order && order.status === 2) {
+        if (order.is_guest === false) {
+          // 已绑定账号的系统普通用户，不弹窗，提示已关联账单，同步刷新主页订单卡片
+          ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功！已生成账单 ￥${order.total_fee}，已关联至绑定账户 [${order.username}]，请在下方订单栏中结算`)
+        } else {
+          // 访客用户，直接弹出付款码
+          ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功`)
+          currentPaymentOrder.value = order
+          ElMessage.warning(`该访客车辆产生了 ￥${order.total_fee} 的停车费，请扫码支付`)
+          handleAlipayPayment()
+        }
+      } else {
+        ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功，账单已结清或无欠费`)
+      }
+      
       await parkingStore.fetchSpots(activeZone.value)
       await orderStore.fetchOrders()
     } catch (error) {
-      console.error('Vehicle enter failed:', error)
-      ElMessage.error(error.response?.data?.message || '入场失败，请重试')
+      console.error('Vehicle exit failed:', error)
+      ElMessage.error(error.response?.data?.message || '离场失败，未找到该车辆或状态异常')
     }
   }
 }
 
 // 打开车牌识别对话框
-const openPlateRecognition = () => {
+const openPlateRecognition = (mode = 'enter') => {
+  lprMode.value = mode
   showPlateDialog.value = true
   clearImage()
 }</script>

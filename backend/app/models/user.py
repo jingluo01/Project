@@ -13,6 +13,7 @@ class SysUser(db.Model):
     balance = db.Column(db.Numeric(10, 2), default=0.00, comment='余额')
     credit_score = db.Column(db.Integer, default=100, comment='信用分')
     is_active = db.Column(db.Boolean, default=True, comment='账号状态')
+    is_deleted = db.Column(db.Boolean, default=False, comment='软删除标记')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

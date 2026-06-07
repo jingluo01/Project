@@ -262,7 +262,17 @@ class ParkingService:
             spot.spot_id, spot.zone_id, spot.status, plate_number
         )
 
-        return {"success": True, "message": "入场成功", "data": order.to_dict()}, 200
+        user = SysUser.query.get(order.user_id)
+        is_guest = (user.user_no == 'guest') if user else True
+        username = user.username if user else "访客"
+        role = user.role if user else 0
+
+        order_data = order.to_dict()
+        order_data['is_guest'] = is_guest
+        order_data['username'] = username
+        order_data['role'] = role
+
+        return {"success": True, "message": "入场成功", "data": order_data}, 200
 
     @staticmethod
     @handle_service_exception(message_prefix="出场失败")
@@ -318,8 +328,18 @@ class ParkingService:
         ParkingService._broadcast_spot_update(
             spot.spot_id, spot.zone_id, spot.status, None
         )
+        
+        from app.services.order_service import OrderService
+        is_guest = (user.user_no == 'guest') if user else True
+        username = user.username if user else "访客"
+        role = user.role if user else 0
 
-        return {"success": True, "message": "出场成功", "data": order.to_dict()}, 200
+        order_data = order.to_dict()
+        order_data['is_guest'] = is_guest
+        order_data['username'] = username
+        order_data['role'] = role
+
+        return {"success": True, "message": "出场成功", "data": order_data}, 200
 
     @staticmethod
     @handle_service_exception(message_prefix="场地维护失败")
