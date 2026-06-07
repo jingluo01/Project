@@ -381,8 +381,8 @@
       title="支付宝扫码支付" 
       width="420px"
       :close-on-click-modal="false"
-      :close-on-press-escape="!currentPaymentOrder?.is_guest"
-      :show-close="!currentPaymentOrder?.is_guest"
+      :close-on-press-escape="!currentPaymentOrder?.must_pay_now"
+      :show-close="!currentPaymentOrder?.must_pay_now"
       @close="stopPolling"
     >
       <div class="qrcode-dialog-content">
@@ -438,10 +438,12 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button v-if="!currentPaymentOrder?.is_guest" @click="showQRCodeDialog = false" size="large">取消支付</el-button>
+          <el-button v-if="!currentPaymentOrder?.must_pay_now" @click="showQRCodeDialog = false" size="large">取消支付</el-button>
           <div v-else class="visitor-pay-tip">
             <el-icon class="mr-1" color="#e6a23c"><Warning /></el-icon>
-            <span style="color: #e6a23c; font-size: 13px; font-weight: bold;">访客车辆须支付后方可开启闸机放行</span>
+            <span style="color: #e6a23c; font-size: 13px; font-weight: bold;">
+              {{ currentPaymentOrder?.is_guest ? '访客车辆须支付后方可开启闸机放行' : '信用分不及格用户须支付后方可开启闸机放行' }}
+            </span>
           </div>
         </div>
       </template>
@@ -1193,14 +1195,18 @@ const confirmPlate = async () => {
       
       const order = res.data
       if (order && order.status === 2) {
-        if (order.is_guest === false) {
-          // 已绑定账号的系统普通用户，不弹窗，提示已关联账单，同步刷新主页订单卡片
+        if (order.must_pay_now === false) {
+          // 已绑定账号且信用分合格的系统普通用户，不弹窗，提示已关联账单，同步刷新主页订单卡片
           ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功！已生成账单 ￥${order.total_fee}，已关联至绑定账户 [${order.username}]，请在下方订单栏中结算`)
         } else {
-          // 访客用户，直接弹出付款码
+          // 访客用户，或者信用分不及格的注册用户，直接弹出付款码
           ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功`)
           currentPaymentOrder.value = order
-          ElMessage.warning(`该访客车辆产生了 ￥${order.total_fee} 的停车费，请扫码支付`)
+          if (order.is_guest === false) {
+            ElMessage.warning(`您的信用分已低于及格线，须支付 ￥${order.total_fee} 的停车费后方可离场！`)
+          } else {
+            ElMessage.warning(`该访客车辆产生了 ￥${order.total_fee} 的停车费，请扫码支付`)
+          }
           handleAlipayPayment()
         }
       } else {

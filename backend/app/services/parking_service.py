@@ -334,10 +334,25 @@ class ParkingService:
         username = user.username if user else "访客"
         role = user.role if user else 0
 
+        from app.models.config import SysConfig
+        min_score_str = SysConfig.get_value("MIN_CREDIT_SCORE", "70")
+        try:
+            min_score = int(min_score_str)
+        except:
+            min_score = 70
+
+        is_credit_fail = False
+        if user and not is_guest:
+            is_credit_fail = (user.credit_score < min_score)
+
+        must_pay_now = is_guest or is_credit_fail
+
         order_data = order.to_dict()
         order_data['is_guest'] = is_guest
         order_data['username'] = username
         order_data['role'] = role
+        order_data['is_credit_fail'] = is_credit_fail
+        order_data['must_pay_now'] = must_pay_now
 
         return {"success": True, "message": "出场成功", "data": order_data}, 200
 
