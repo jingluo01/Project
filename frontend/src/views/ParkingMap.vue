@@ -905,7 +905,7 @@ const startPolling = (outTradeNo) => {
         // 支付成功
         stopPolling()
         pollingStatus.value = 'success'
-        ElMessage.success('支付成功！')
+        ElMessage.success(`支付成功！已完成缴费，车牌 ${currentPaymentOrder.value?.plate_number || ''} 离场成功，闸机已放行！`)
         
         // 延迟关闭对话框，让用户看到成功提示
         setTimeout(async () => {
@@ -1200,7 +1200,7 @@ const confirmPlate = async () => {
           ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功！已生成账单 ￥${order.total_fee}，已关联至绑定账户 [${order.username}]，请在下方订单栏中结算`)
         } else {
           // 访客用户，或者信用分不及格的注册用户，直接弹出付款码
-          ElMessage.success(`车牌 ${recognizedPlate.value} 离场成功`)
+          ElMessage.info(`车辆已到达出口通道，车牌：${recognizedPlate.value}`)
           currentPaymentOrder.value = order
           if (order.is_guest === false) {
             ElMessage.warning(`您的信用分已低于及格线，须支付 ￥${order.total_fee} 的停车费后方可离场！`)
